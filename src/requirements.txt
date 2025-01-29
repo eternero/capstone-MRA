@@ -1,0 +1,31 @@
+# brew prerequisiters
+pkg-config
+gcc 
+readline 
+sqlite 
+gdbm 
+freetype 
+libpng
+
+# brew dependencies
+ffmpeg 
+eigen 
+libyaml 
+fftw
+libsamplerate 
+libtag 
+tensorflow
+
+
+# pip3
+essentia
+pysoundcard
+ipython
+numpy
+matplotlib
+pyyaml
+requests
+mutagen
+python-dotenv
+librosa
+beautifulsoup4

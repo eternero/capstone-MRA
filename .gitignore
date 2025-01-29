@@ -1,0 +1,5 @@
+venv/
+src/audio/*
+src/.env
+.vscode/
+.DS_Store
