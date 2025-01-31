@@ -2,30 +2,28 @@
 In this file we define an object to acquire track info from the Spotify API.
 """
 
+import os
 import base64
 import requests
 from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
-
 
 class SpotifyAPI:
     """_summary_
     """
 
-    def __init__(self, client_id : str, client_secret : str):
+    def __init__(self):
         self.access_token   = None
 
-        self.client_id      = client_id
-        self.client_secret  = client_secret
+        load_dotenv()
+        self.client_id      = os.environ.get('CLIENT_ID')
+        self.client_secret  = os.environ.get('CLIENT_SECRET')
 
     def request_access_token(self):
         """Obtain a Spotify access token via the Client Credentials Flow."""
         endpoint = "https://accounts.spotify.com/api/token"
 
         # Encode client_id:client_secret in Base64
-        auth_str = f"{self.client_id}:{self.client_secret}"
+        auth_str     = f"{self.client_id}:{self.client_secret}"
         b64_auth_str = base64.b64encode(auth_str.encode()).decode()
 
         headers = {
@@ -33,11 +31,11 @@ class SpotifyAPI:
             "Content-Type" : "application/x-www-form-urlencoded"
         }
         data = {
-            "grant_type": "client_credentials"
+            "grant_type"   : "client_credentials"
         }
 
         try:
-            response = requests.post(endpoint, headers=headers, data=data, timeout=5)
+            response   = requests.post(endpoint, headers=headers, data=data, timeout=5)
             token_info = response.json()
             self.access_token = token_info["access_token"]
             return self.access_token
@@ -45,23 +43,30 @@ class SpotifyAPI:
         except requests.exceptions.HTTPError as err:
             print(f"Failed to get token: {response.status_code} {response.text}\nError:\n{err}")
 
-    def get_track_popularity(self, track_artist : str, track_name : str) -> str:
-        """Uses the Spotify API to acquire the popularity for a given track.
+    def get_spotify_features(self, track_artist : str, track_name : str) -> str:
+        """Uses the Spotify API to acquire track features such as ID, Album Type and Popularity.
+
+        By hitting the Spotify API Search Endpoint and filtering so that it only provides the top
+        result for a track, we retrieve the response from the API and extract the previously
+        mentioned features. If there is one drawback here, is that if the Spotify Search Algorithm
+        fails us, then we will get the data for the wrong track... but that won't happen haha!
 
         Args:
-            track_artist : _description_
-            track_name   : _description_
+            track_artist : The name of the artist for the track.
+            track_name   : The name of the track to be searched for.
 
         Returns:
-            str: _description_
+            A dictionary containg Track ID, Album Type and Popularity extracted from the results
+            of the Spotify API Search Endpoint.
+
+            NOTE : The idiot api groups EPs and Singles together!!! Albums and Mixtapes too!!!!
         """
 
         # First, make sure that we have a fresh access token, since these expire every hour.
         self.request_access_token()
-
-        # Build our query with `track_artist` and `track_name`
         query = f"{track_artist} {track_name}"
 
+        # Commence building our request query.
         endpoint = "https://api.spotify.com/v1/search"
         headers  = {
             "Authorization": f"Bearer {self.access_token}",
@@ -77,8 +82,21 @@ class SpotifyAPI:
         try:
             response = requests.get(endpoint, headers=headers, params=params, timeout=5)
             data = response.json()
-            return data['tracks']['items'][0]['popularity']
+
+            # Format the data and return it.
+            spotify_features =  {
+                                  "spotify_id" : data['tracks']['items'][0]['id'],
+                                  "album_type" : data['tracks']['items'][0]['album']['album_type'],
+                                  "popularity" : data['tracks']['items'][0]['popularity']
+                                }
+
+            return spotify_features
 
         except requests.exceptions.HTTPError as err:
             print(f"Failed to retrieve data: {response.status_code} {response.text}\nError:\n{err}")
-    
+
+
+# spotify_api = SpotifyAPI()
+# print(spotify_api.get_spotify_features('nettspend', 'what they say'))
+# print(spotify_api.get_spotify_features('bladee', 'waster'))
+
