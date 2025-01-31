@@ -16,13 +16,31 @@ all of the features in that dictionary... I guess this wouldn't be bad for now, 
 with this approach at the moment.
 """
 import os
-import numpy as np
+from typing import Any
 from essentia.standard import MonoLoader
 from src.extractors.metadata import MetadataExtractor
+from src.extractors.spotify_api import SpotifyAPI
+
 
 class Track:
     """
-    ...
+    The Track object should encapsulate all of the necessary elements that we've determined to be 
+    pertinent to describing and analyzing a song. This includes metadata, features extracted using
+    essentia, and other information acquired from the SpotifyAPI (TODO).
+
+    This class implements the usage of others such as the MetadataExtractor, SpotifyAPI, 
+    EssentiaModels and FeatureExtractor. The last two essentially work towards the same thing,
+    acquisition of features through essentia - and the first two are quite self-explanatory.
+
+    Attributes:
+        track_path : The path which points to the location of the song file.
+        track_mono : The MonoLoader (or numpy array) which represents the song.
+
+        features   : The dictionary which stores the features that have been acquired for the track
+        metadata   : The metadata of the track. Includes track name, album name, artist name etc...
+        metadata_extractor : The instance of `MetadataExtractor` used to acquire the metadata.
+
+    TODO : Missing implementation of SpotifyAPI here, work on it.
     """
     def __init__(self, track_path : str, track_mono : MonoLoader):
         self.track_path = track_path
@@ -31,8 +49,9 @@ class Track:
         self.features = {}
         self.metadata = None
         self.metadata_extractor = MetadataExtractor(self.track_path)
+        self.spotify_api = SpotifyAPI()
 
-    def set_features(self, features : dict[str, np.array]):
+    def set_features(self, features : dict[str, Any]):
         """
         ...
         """
@@ -55,6 +74,27 @@ class Track:
         ...
         """
         return self.track_mono
+
+    def get_spotify_features(self):
+        """
+        NOTE : As of now, the only Spotify feature I'm concerned about is the popularity and 
+        potentially the release type (album, mixtape, EP, etc...) Not much really.
+
+        NOTE 
+        Clean this up a little for the love of God.
+        """
+
+        # The metadata is required for this, as we would need track_artist and track_name
+        if not self.metadata:
+            self.get_track_metadata()
+
+        track_artist = self.metadata['artist']
+        track_name   = self.metadata['title']
+
+        spotify_features = self.spotify_api.get_spotify_features(track_artist, track_name)
+        self.features.update(spotify_features)
+        return spotify_features
+
 
     def get_track_metadata(self):
         """
@@ -88,7 +128,7 @@ def get_tracks(base_path : str) -> list[MonoLoader]:
     ...
     """
     track_list = []
-    audio_dir = base_path
+    audio_dir  = base_path
 
     for track_path in os.listdir(audio_dir):
         if os.path.isfile(os.path.join(audio_dir, track_path)):
