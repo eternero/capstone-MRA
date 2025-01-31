@@ -19,8 +19,8 @@ NOTE Additional Considerations:
       release type pipeline yet, its annoying and will waste so many requests.
 """
 
-import nodriver
 from typing import Optional
+import nodriver
 from nodriver import Tab, Browser
 
 
