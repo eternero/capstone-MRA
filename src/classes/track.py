@@ -109,7 +109,7 @@ class TrackPipline:
                 track_mono = MonoLoader(filename=full_path,
                                         sampleRate=sample_rate,
                                         resampleQuality=0)()
-                track = Track(track_path=track_filename, track_mono=track_mono)
+                track = Track(track_path=full_path, track_mono=track_mono)
                 print(f"Loaded track: {track_filename}")
                 return track
             except Exception as e:

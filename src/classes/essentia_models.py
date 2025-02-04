@@ -131,3 +131,19 @@ mood_aggressive_musicnn_model = EssentiaModel(
     output='model/Softmax',
     algorithm=TensorflowPredict2D,
 )
+
+# ------------------------------------------------------------------------------
+# Create our dictionary of Embeddings and Models
+# ------------------------------------------------------------------------------
+essentia_models_dict =  {
+                        discogs_effnet_emb: [
+                                              timbre_effnet_model,
+                                              danceability_effnet_model
+                                            ],
+                        # msd_musicnn_emb:    [
+                        #                       danceability_effnet_model,
+                        #                       voice_instrumental_musicnn_model,
+                        #                       mood_happy_musicnn_model,
+                        #                       mood_aggressive_musicnn_model
+                        #                     ]
+                        }
