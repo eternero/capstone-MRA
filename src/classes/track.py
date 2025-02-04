@@ -16,10 +16,13 @@ all of the features in that dictionary... I guess this wouldn't be bad for now, 
 with this approach at the moment.
 """
 import os
-from typing import Any
+import multiprocessing as mp
+from typing import Any, List, Dict
 from essentia.standard import MonoLoader
-from src.extractors.metadata import MetadataExtractor
 from src.extractors.spotify_api import SpotifyAPI
+from src.classes.essentia_models import EssentiaModel
+from src.extractors.metadata import MetadataExtractor
+from src.extractors.audio_features import FeatureExtractor
 
 
 class Track:
@@ -46,113 +49,162 @@ class Track:
         self.track_path = track_path
         self.track_mono = track_mono
 
-        self.features = {}
-        self.metadata = None
-        self.metadata_extractor = MetadataExtractor(self.track_path)
-        self.spotify_api = SpotifyAPI()
+        self.features: Dict[str, Any] = {}
+        self.metadata: Dict[str, Any] = {}
 
-    def set_features(self, features : dict[str, Any]):
-        """
-        ...
-        """
-        self.features = features
+    def update_features(self, new_features: Dict[str, Any]) -> None:
+        """_summary_
 
-    def get_features(self):
+        Args:
+            new_features (Dict[str, Any]): _description_
         """
-        ...
-        """
-        return self.features
+        self.features.update(new_features)
 
-    def get_track_path(self):
-        """
-        ...
-        """
-        return self.track_path
+    def update_metadata(self, new_metadata: Dict[str, Any]) -> None:
+        """_summary_
 
-    def get_track_mono(self):
+        Args:
+            new_metadata (Dict[str, Any]): _description_
         """
-        ...
-        """
-        return self.track_mono
-
-    def get_spotify_features(self):
-        """
-        NOTE : As of now, the only Spotify feature I'm concerned about is the popularity and 
-        potentially the release type (album, mixtape, EP, etc...) Not much really.
-
-        NOTE 
-        Clean this up a little for the love of God.
-        """
-
-        # The metadata is required for this, as we would need track_artist and track_name
-        if not self.metadata:
-            self.get_track_metadata()
-
-        track_artist = self.metadata['artist']
-        track_name   = self.metadata['title']
-
-        spotify_features = self.spotify_api.get_spotify_features(track_artist, track_name)
-        self.features.update(spotify_features)
-        return spotify_features
+        self.metadata = new_metadata
 
 
-    def get_track_metadata(self):
+class TrackPipline:
+    """
+    A data pipeline that processes audio tracks in a prescribed order:
+        1. Metadata Extraction 
+        2. Spotify API Extraction
+        3. Additional Tag Extraction (e.g. Essentia Models / Algorithms, Librosa, TorchAudio)
+    """
+
+    def __init__(self, base_path : str, sample_rate: int = 44100):
+        self.base_path               = base_path
+        self.sample_rate             = sample_rate
+        self.track_list: List[Track] = []
+
+        # Define extractors to help ourselves.
+        self.spotify_api_extractor   = SpotifyAPI()
+        self.metadata_extractor      = MetadataExtractor()
+        self.audio_feature_extractor = FeatureExtractor()
+
+        # NOTE : Make it so that the `FeatureExtractor` class works similar
+        # to these previous two which work on a single track, rather than a list.
+
+    @staticmethod
+    def _load_single_track(track_filename: str, base_path: str, sample_rate: int) -> Track:
         """
-        Retrieves metadata for the track specified by `self.track_path`. Caches the result in 
-        `self.metadata`, if `self.metadata` is already set, it is returned without re-processing.
+        Helper method for `load_tracks()`. Loads a single track and returns a Track object.
+
+        Args:
+            track_filename (str): The filename of the track.
+            base_path      (str): The directory where tracks are stored.
+            sample_rate    (int): The sample rate for loading the track.
 
         Returns:
-            The metadata dictionary/structure if successfully processed, or None if the file format
-            is unsupported or an error occurs.
+            Track: A Track object if successful, or None if loading fails.
         """
-        # If metadata is already set, return it immediately (caching behavior)
-        if not self.metadata:
+        full_path = os.path.join(base_path, track_filename)
+        if os.path.isfile(full_path):
             try:
-                extension = os.path.splitext(self.track_path)[1].lower()
-
-                if extension == ".flac":
-                    self.metadata = self.metadata_extractor.process_flac()
-                elif extension == ".mp3":
-                    self.metadata = self.metadata_extractor.process_mp3()
-                else:
-                    print(f"Unsupported file format: {extension} in {self.track_path}")
-
+                track_mono = MonoLoader(filename=full_path,
+                                        sampleRate=sample_rate,
+                                        resampleQuality=0)()
+                track = Track(track_path=track_filename, track_mono=track_mono)
+                print(f"Loaded track: {track_filename}")
+                return track
             except Exception as e:
-                print(f"Error processing {self.track_path}: {e}")
+                print(f"Error loading track {track_filename}: {e}")
+        return None
 
-        return self.metadata
+
+    def load_tracks(self, num_processes: int = mp.cpu_count()) -> None:
+        """
+        Loads all audio files from `base_path` using multiprocessing.
+
+        Args:
+            num_processes (int, optional): Number of parallel processes to use. 
+                                           Defaults to available CPU cores.
+        """
+        track_filenames = os.listdir(self.base_path)
+
+        # Prepare arguments for multiprocessing
+        args = [(filename, self.base_path, self.sample_rate) for filename in track_filenames]
+
+        with mp.Pool(processes=num_processes) as pool:
+            results = pool.starmap(self._load_single_track, args)
+
+        # Filter out any None results (failed loads)
+        self.track_list = [track for track in results if track is not None]
 
 
-def get_tracks(base_path : str) -> list[MonoLoader]:
-    """
-    ...
-    """
-    track_list = []
-    audio_dir  = base_path
+    def run_pipeline(self,
+                     essentia_models_dict : Dict[EssentiaModel, List[EssentiaModel]]
+                    ) -> List[Track]:
+        """
+        Processes all tracks in the following order:
+          1. Extract metadata
+          2. Extract Spotify features (requires metadata)
+          3. Run any additional steps
 
-    for track_path in os.listdir(audio_dir):
-        if os.path.isfile(os.path.join(audio_dir, track_path)):
-            """            
-            NOTE : Still haven't fixed the sample rate hardcoding...
-            I should read some of the documentation to find out the drawbacks
-            of not providing songs with a 16kHz sample rate as the models mainly require
-            i.e. most of the models are trained with songs that have a 16kHz sample rate...
-            Does this matter... does this function re-sample in any case...?
+        Args:
+            essentia_models_dict : This is a dictionary that contains pairs of 
+                {Essentia Embeddings : List[Essentia Model]}... This is because multiple models can
+                depend on the same embeddings, and containing them as such provides an efficient 
+                approach..
+        """
+        if not self.track_list:
+            self.load_tracks()
 
-            This issue seems to provide some valuable information on it.
-                https://github.com/MTG/essentia/issues/1442
+        # -----------------------------------------------------------------------------------------
+        # Step 1 : Metadata Extraction and Spotify API Features Extraction
+        # -----------------------------------------------------------------------------------------
+        for track in self.track_list:
+            metadata = self.metadata_extractor.extract(track.track_path)
+            track.update_metadata(metadata)
 
-            NOTE : Nonetheless, I should go over the parameters for MonoLoader and understand what 
-            each of them represent. This could of course allow for more better performance and/or
-            even better results
+            # Once we've got the metadata, we can proceed to get the Spotify API Features
+            track_name   = track.metadata['TITLE']
+            track_artist = track.metadata['ARTIST']
+            spotify_features = self.spotify_api_extractor.get_spotify_features(track_artist,
+                                                                               track_name)
+            track.update_features(spotify_features)
 
-            NOTE : The documentation seems fine with 44kHz (44100), so I guess I'll be testing out
-            if there are any differences. `resampleQuality` should stay at zero though.
-            """
-            track_mono = MonoLoader(filename=f"{base_path}/{track_path}",
-                                    sampleRate=44100, resampleQuality=0)()
 
-            curr_track = Track(track_path= track_path, track_mono=track_mono)
-            track_list.append(curr_track)
+        # -----------------------------------------------------------------------------------------
+        # Step 2 : Essentia Models Extraction
+        # -----------------------------------------------------------------------------------------
+        for essentia_embeddings, essentia_model_list in essentia_models_dict.items():
+            # First, gather the embeddings so that we only call them once.
+            # NOTE : I'm seeing that it might be useless to have the `embeddings`
+            #        attribute for this class... fix that!!! TODO TODO TODO
+            essentia_embeddings = essentia_embeddings.get_model()
 
-    return track_list
+            for essentia_model in essentia_model_list:
+                # Now, iterate through each of the models that pertain to a set embedding model
+                # and use it to retrieve a feature from our tracks! Similar to the embeddings,
+                # the model will only be loaded once and ran for each track. Efficiency!
+                inference_model = essentia_model.get_model()
+                feature_name    = essentia_model.get_graph_filename()
+
+                for track in self.track_list:
+                    self.audio_feature_extractor.retrieve_model_features(track,
+                                                                         essentia_embeddings,
+                                                                         inference_model,
+                                                                         feature_name)
+
+        # -----------------------------------------------------------------------------------------
+        # Step 3 : Essentia Algorithms Extraction
+        # -----------------------------------------------------------------------------------------
+
+        # NOTE : I could go about the above in two ways... we hardcode the algorithms that we will
+        #        be using for feature retrieval or we do something similar to the previous step...
+        #
+        #        Providing a list of methods that will be used should work as well. For example, we
+        #        can have an `add_pipeline_step()` method to which we provide it callables such as
+        #               FeatureExtractor.retrieve_bpm_re2013,
+        #               FeatureExtractor.retrieve_bpm_librosa
+        #
+        #        We just have to standardize these methods so that they all receive the same input,
+        #        a `Track` object representing the current track. This should work even with
+        #        librosa since it also takes a MonoLoader for its function inputs.
+        return self.track_list

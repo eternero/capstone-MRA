@@ -95,8 +95,3 @@ class SpotifyAPI:
         except requests.exceptions.HTTPError as err:
             print(f"Failed to retrieve data: {response.status_code} {response.text}\nError:\n{err}")
 
-
-# spotify_api = SpotifyAPI()
-# print(spotify_api.get_spotify_features('nettspend', 'what they say'))
-# print(spotify_api.get_spotify_features('bladee', 'waster'))
-

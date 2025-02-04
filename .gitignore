@@ -3,4 +3,10 @@ src/audio/*
 src/.env
 .vscode/
 .DS_Store
-__pycache__/
+
+# Ignore all __pycache__ directories recursively
+**/__pycache__/*
+
+# Ignore all compiled Python files recursively
+**/*.py[cod]
+**/*$py.class
