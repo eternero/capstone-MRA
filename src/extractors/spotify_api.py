@@ -2,48 +2,16 @@
 In this file we define an object to acquire track info from the Spotify API.
 """
 
-import os
 import base64
 import requests
-from dotenv import load_dotenv
 
 class SpotifyAPI:
     """_summary_
     """
 
-    def __init__(self):
-        self.access_token   = None
-
-        load_dotenv()
-        self.client_id      = os.environ.get('CLIENT_ID')
-        self.client_secret  = os.environ.get('CLIENT_SECRET')
-
-    def request_access_token(self):
-        """Obtain a Spotify access token via the Client Credentials Flow."""
-        endpoint = "https://accounts.spotify.com/api/token"
-
-        # Encode client_id:client_secret in Base64
-        auth_str     = f"{self.client_id}:{self.client_secret}"
-        b64_auth_str = base64.b64encode(auth_str.encode()).decode()
-
-        headers = {
-            "Authorization": f"Basic {b64_auth_str}",
-            "Content-Type" : "application/x-www-form-urlencoded"
-        }
-        data = {
-            "grant_type"   : "client_credentials"
-        }
-
-        try:
-            response   = requests.post(endpoint, headers=headers, data=data, timeout=5)
-            token_info = response.json()
-            self.access_token = token_info["access_token"]
-            return self.access_token
-
-        except requests.exceptions.HTTPError as err:
-            print(f"Failed to get token: {response.status_code} {response.text}\nError:\n{err}")
-
-    def get_spotify_features(self, track_artist : str, track_name : str) -> str:
+    @staticmethod
+    def get_spotify_features(track_artist : str, track_name : str,
+                             access_token : str) -> dict[str, str]:
         """Uses the Spotify API to acquire track features such as ID, Album Type and Popularity.
 
         By hitting the Spotify API Search Endpoint and filtering so that it only provides the top
@@ -63,13 +31,12 @@ class SpotifyAPI:
         """
 
         # First, make sure that we have a fresh access token, since these expire every hour.
-        self.request_access_token()
         query = f"{track_artist} {track_name}"
 
         # Commence building our request query.
         endpoint = "https://api.spotify.com/v1/search"
         headers  = {
-            "Authorization": f"Bearer {self.access_token}",
+            "Authorization": f"Bearer {access_token}",
             "Content-Type" : "application/json"
         }
         params   = {
@@ -89,9 +56,33 @@ class SpotifyAPI:
                                   "album_type" : data['tracks']['items'][0]['album']['album_type'],
                                   "popularity" : data['tracks']['items'][0]['popularity']
                                 }
-
             return spotify_features
 
         except requests.exceptions.HTTPError as err:
             print(f"Failed to retrieve data: {response.status_code} {response.text}\nError:\n{err}")
+            raise  # Raise so that the caller can handle it. see _get_metadata_and_spotify in track
 
+
+def request_access_token(client_id : str, client_secret : str) -> str:
+    """Obtain a Spotify access token via the Client Credentials Flow."""
+    endpoint = "https://accounts.spotify.com/api/token"
+
+    # Encode client_id:client_secret in Base64
+    auth_str     = f"{client_id}:{client_secret}"
+    b64_auth_str = base64.b64encode(auth_str.encode()).decode()
+
+    headers = {
+        "Authorization": f"Basic {b64_auth_str}",
+        "Content-Type" : "application/x-www-form-urlencoded"
+    }
+    data = {
+        "grant_type"   : "client_credentials"
+    }
+
+    try:
+        response   = requests.post(endpoint, headers=headers, data=data, timeout=5)
+        token_info = response.json()
+        return token_info["access_token"]
+
+    except requests.exceptions.HTTPError as err:
+        print(f"Failed to get token: {response.status_code} {response.text}\nError:\n{err}")
