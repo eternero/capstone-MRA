@@ -16,6 +16,46 @@ from src.extractors.audio_features import FeatureExtractor
 from src.extractors.spotify_api import SpotifyAPI, request_access_token
 
 
+import numpy as np
+
+# Global variables to hold the models and feature name in each worker process.
+global_embedding_model = None
+global_inference_model = None
+global_feature_name = None
+
+def init_essentia_worker(embedding_model_callable, inference_model_callable, feature_name: str):
+    """
+    Initializer for each worker process. It loads the Essentia models into global variables.
+    
+    Args:
+        embedding_model_callable (Callable): A callable that returns the embedding model.
+        inference_model_callable (Callable): A callable that returns the inference model.
+        feature_name (str): The name of the feature to extract.
+    """
+    global global_embedding_model, global_inference_model, global_feature_name
+    global_embedding_model = embedding_model_callable()  # Load the embedding model
+    global_inference_model = inference_model_callable()  # Load the inference model
+    global_feature_name = feature_name
+
+def retrieve_features_worker(track):
+    """
+    Worker function to extract audio features for a single track using the global Essentia models.
+    
+    Args:
+        track (Track): A Track object.
+        
+    Returns:
+        The Track object with the extracted feature added.
+    """
+    # Compute track embeddings using the global embedding model.
+    track_embeddings = global_embedding_model(track.track_mono)
+    # Get model predictions using the global inference model.
+    model_predictions = global_inference_model(track_embeddings)
+    # Compute the mean prediction and store it in the track's features.
+    track.features[global_feature_name] = np.mean(model_predictions, axis=0)
+    return track
+
+
 class Track:
     """
     The Track object should encapsulate all of the necessary elements that we've determined to be 
@@ -194,6 +234,38 @@ class TrackPipeline:
         return results
 
 
+    def run_parallel_feature_extraction(self,
+                                        embedding_model_obj: Any,
+                                        inference_model_obj: Any,
+                                        feature_name: str,
+                                        num_workers: int = os.cpu_count()) -> None:
+        """
+        Parallelizes audio feature extraction using ProcessPoolExecutor with an initializer.
+    
+        Args:
+            embedding_model_obj: An object with a get_model() method to load the embedding model.
+            inference_model_obj: An object with a get_model() method to load the inference model.
+            feature_name (str): The name of the feature being extracted.
+            num_workers (int, optional): Number of worker processes.
+        """
+        # Use ProcessPoolExecutor with initializer to load the heavy models in each worker.
+        with ProcessPoolExecutor(max_workers=num_workers,
+                                  initializer=init_essentia_worker,
+                                  initargs=(embedding_model_obj.get_model,
+                                            inference_model_obj.get_model,
+                                            feature_name)
+                                 ) as executor:
+            futures = [
+                executor.submit(retrieve_features_worker, track)
+                for track in self.track_list
+            ]
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    print(f"Error processing a track in feature extraction: {e}")
+
+
     def run_pipeline(self, essentia_models_dict : Dict[EssentiaModel, List[EssentiaModel]]
                     ) -> List[Track]:
         """
@@ -238,25 +310,16 @@ class TrackPipeline:
         # -----------------------------------------------------------------------------------------
         # Step 2 : Essentia Models Extraction (TODO : Needs to be concurrent)
         # -----------------------------------------------------------------------------------------
-        for essentia_embeddings, essentia_model_list in essentia_models_dict.items():
-            # First, gather the embeddings so that we only call them once.
-            # NOTE : I'm seeing that it might be useless to have the `embeddings`
-            #        attribute for this class... fix that! TODO
-            essentia_embeddings = essentia_embeddings.get_model()
+        for essentia_embeddings_obj, essentia_model_list in essentia_models_dict.items():
 
-            for essentia_model in essentia_model_list:
-                # Now, iterate through each of the models that pertain to a set embedding model
-                # and use it to retrieve a feature from our tracks! Similar to the embeddings,
-                # the model will only be loaded once and ran for each track. Efficiency!
-                inference_model = essentia_model.get_model()
-                feature_name    = essentia_model.get_graph_filename()
+            for inference_model_obj in essentia_model_list:
+                feature_name = inference_model_obj.get_graph_filename()
+                print(f"CURRENT MODEL: {feature_name}")
+                self.run_parallel_feature_extraction(essentia_embeddings_obj,
+                                                     inference_model_obj,
+                                                     feature_name,
+                                                    )
 
-                self.run_in_parallel(self.audio_feature_extractor.retrieve_model_features,
-                                     self.track_list,
-                                     essentia_embeddings,
-                                     inference_model,
-                                     feature_name
-                                    )
 
         # -----------------------------------------------------------------------------------------
         # Step 3 : Essentia Algorithms Extraction
