@@ -4,14 +4,14 @@
 import os
 import time
 import random
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Callable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-from requests.exceptions import HTTPError, Timeout
 
 from dotenv import load_dotenv
 from essentia.standard import MonoLoader
-from src.classes.essentia_models import EssentiaModel
+from requests.exceptions import HTTPError, Timeout
 from src.extractors.metadata import MetadataExtractor
+from src.classes.essentia_models import EssentiaModel
 from src.extractors.audio_features import FeatureExtractor
 from src.extractors.spotify_api import SpotifyAPI, request_access_token
 
@@ -60,7 +60,7 @@ class Track:
         self.metadata = new_metadata
 
 
-class TrackPipline:
+class TrackPipeline:
     """
     A data pipeline that processes audio tracks in a prescribed order:
         1. Metadata Extraction 
@@ -81,25 +81,23 @@ class TrackPipline:
         # NOTE : Make it so that the `FeatureExtractor` class works similar
         # to these previous two which work on a single track, rather than a list.
 
-    @staticmethod
-    def _load_single_track(track_filename: str, base_path: str, sample_rate: int) -> Track:
+    def load_single_track(self, track_filename: str) -> Track:
         """
-        Helper method for `load_tracks()`. Loads a single track and returns a Track object.
+        Loads a single track and returns a Track object.
     
         Args:
-            track_filename (str): The filename of the track.
-            base_path      (str): The directory where tracks are stored.
-            sample_rate    (int): The sample rate for loading the track.
+            track_filename : The filename of the track.
     
         Returns:
             Track: A Track object if successful, or None if loading fails.
         """
-        full_path = os.path.join(base_path, track_filename)
+        full_path = os.path.join(self.base_path, track_filename)
         if os.path.isfile(full_path):
             try:
-                track_mono = MonoLoader(filename=full_path,
-                                        sampleRate=sample_rate,
+                track_mono = MonoLoader(filename       =full_path,
+                                        sampleRate     =self.sample_rate,
                                         resampleQuality=0)()
+
                 track = Track(track_path=full_path, track_mono=track_mono)
                 print(f"Loaded track: {track_filename}")
                 return track
@@ -108,39 +106,13 @@ class TrackPipline:
                 print(f"Error loading track {track_filename}: {e}")
         return None
 
-    def load_tracks(self, num_processes: int = None) -> None:
-        """
-        Loads all audio files from base_path using process-based parallelism.
-    
-        Args:
-            num_processes (int, optional): Number of worker processes to use.
-                                         Defaults to the number of available CPU cores.
-        """
-        if num_processes is None:
-            num_processes = os.cpu_count() or 1  # Fallback to 1 if os.cpu_count() returns None
-
-        track_filenames = os.listdir(self.base_path)
-
-        # Use ProcessPoolExecutor with multiple arguments by mapping over parallel iterables.
-        with ProcessPoolExecutor(max_workers=num_processes) as executor:
-            results = list(executor.map(
-                self._load_single_track,
-                track_filenames,
-                [self.base_path] * len(track_filenames),
-                [self.sample_rate] * len(track_filenames)
-            ))
-
-        # Filter out any None results (failed loads)
-        self.track_list = [track for track in results if track is not None]
-
 
     def _get_metadata_and_spotify(self, track : Track, access_token : str):
-        """Helper method for `run_parallel_metadata_and_spotify`. Allows to acquire the metadata
-        and Spotify API features for a single track,
+        """Acquires the metadata and Spotify API features for a single track.
 
         Args:
-            track      (Track): The track for which we will be acquiring its metadata and features.
-            access_token (str): The access token needed to make the Spotify API requests.
+            track        : The track for which we will be acquiring its metadata and features.
+            access_token : The access token needed to make the Spotify API requests.
         """
         metadata = self.metadata_extractor.extract(track.track_path)
         track.update_metadata(metadata)
@@ -156,7 +128,7 @@ class TrackPipline:
         base_delay  = 1     # initial delay in seconds.
         retries     = 0     # used to track number of retries.
 
-        
+
         while True:
             try:
                 spotify_features = self.spotify_api_extractor.get_spotify_features(track_artist,
@@ -181,34 +153,48 @@ class TrackPipline:
                 time.sleep(delay)
 
 
-    def run_parallel_metadata_and_spotify(self, access_token: str,
-                                          num_workers: int = os.cpu_count()) -> None:
+    def run_in_parallel(self, func   : Callable,
+                        item_list    : list[Any], *args,
+                        num_workers  : int = os.cpu_count(),
+                        executor_type: str = "process",
+                        **kwargs)   -> list[Any]:
         """
-        Runs the _get_metadata_and_spotify method in parallel for all tracks in self.track_list.
-        
-        Args:
-            access_token (str): Spotify API access token.
-            num_workers (int, optional): Number of parallel worker threads. Defaults to
-                the minimum of available CPU cores and number of tracks.
-        """
-        with ThreadPoolExecutor(max_workers=num_workers) as executor:
-            # Submit each track for processing.
-            futures = [
-                        executor.submit(self._get_metadata_and_spotify, track, access_token)
-                        for track in self.track_list
-                      ]
+        Runs the provided function in parallel for each item in item_list. This is essentially
+        a wrapper of the concurrent.futures XPoolExecutor methods adapted to our use case.
 
-            # Optionally, wait for each future to complete and handle exceptions.
+        Args:
+            func          : The method to be run in parallel.
+            item_list     : Will either be a list of all track filenames, or a list of all tracks.
+            num_workers   : Number of workers to use for our executor.
+            executor_type : The executor to be used, either ThreadPoolExec or ProcessPoolExec.
+        """
+
+        # First, determine which Executor will be used.
+        if executor_type.lower() == "process":
+            Executor = ProcessPoolExecutor
+        else:
+            Executor = ThreadPoolExecutor
+
+        results = []    # List to collect all results later on.
+        with Executor(max_workers=num_workers) as executor:
+            futures = [
+                executor.submit(func, item, *args, **kwargs)
+                for item in item_list
+            ]
+
+            # Wait for all tasks to complete and handle exceptions.
             for future in as_completed(futures):
                 try:
-                    future.result()
-
+                    result = future.result()    # This is done to handle
+                    results.append(result)      # all results asynchronously
+                                                # and individually.
                 except Exception as e:
                     print(f"Error processing a track: {e}")
 
+        return results
 
-    def run_pipeline(self,
-                     essentia_models_dict : Dict[EssentiaModel, List[EssentiaModel]]
+
+    def run_pipeline(self, essentia_models_dict : Dict[EssentiaModel, List[EssentiaModel]]
                     ) -> List[Track]:
         """
         Processes all tracks in the following order:
@@ -224,7 +210,17 @@ class TrackPipline:
                 and containing them as such provides an efficient approach..
         """
         if not self.track_list:
-            self.load_tracks()
+            track_filenames = os.listdir(self.base_path)
+            result_tracks   = self.run_in_parallel(self.load_single_track,
+                                                   track_filenames,
+                                                   executor_type="process")
+
+            # Filter the results to only maintain retrieved tracks.
+            self.track_list = [track for track in result_tracks if track is not None]
+            print(f"Retrieved {len(self.track_list)} tracks.")
+
+            # Reduce to 20 for the sake of testing
+            self.track_list = self.track_list[:20]
 
         # -----------------------------------------------------------------------------------------
         # Step 1 : Metadata Extraction and Spotify API Features Extraction (Parallel)
@@ -233,8 +229,11 @@ class TrackPipline:
         client_id     = os.environ.get('CLIENT_ID')
         client_secret = os.environ.get('CLIENT_SECRET')
         access_token  = request_access_token(client_id, client_secret)
-        self.run_parallel_metadata_and_spotify(access_token)
 
+        self.run_in_parallel(self._get_metadata_and_spotify,
+                             self.track_list, access_token,
+                             executor_type="thread"
+                            )
 
         # -----------------------------------------------------------------------------------------
         # Step 2 : Essentia Models Extraction (TODO : Needs to be concurrent)
@@ -242,7 +241,7 @@ class TrackPipline:
         for essentia_embeddings, essentia_model_list in essentia_models_dict.items():
             # First, gather the embeddings so that we only call them once.
             # NOTE : I'm seeing that it might be useless to have the `embeddings`
-            #        attribute for this class... fix that!!! TODO TODO TODO
+            #        attribute for this class... fix that! TODO
             essentia_embeddings = essentia_embeddings.get_model()
 
             for essentia_model in essentia_model_list:
@@ -252,11 +251,12 @@ class TrackPipline:
                 inference_model = essentia_model.get_model()
                 feature_name    = essentia_model.get_graph_filename()
 
-                for track in self.track_list:
-                    self.audio_feature_extractor.retrieve_model_features(track,
-                                                                         essentia_embeddings,
-                                                                         inference_model,
-                                                                         feature_name)
+                self.run_in_parallel(self.audio_feature_extractor.retrieve_model_features,
+                                     self.track_list,
+                                     essentia_embeddings,
+                                     inference_model,
+                                     feature_name
+                                    )
 
         # -----------------------------------------------------------------------------------------
         # Step 3 : Essentia Algorithms Extraction
@@ -282,8 +282,8 @@ class TrackPipline:
 
 
 # NOTE I'm thinking of two ways of parallelizing the Essentia Model calls.
-# 
-# As ever, I must be aware that the parallelizing or anything really, first requires for the 
+#
+# As ever, I must be aware that the parallelizing or anything really, first requires for the
 # embeddings to be loaded. That is done on the outside then, since we will only load embeddings
 # once or twice.
 #
@@ -294,5 +294,28 @@ class TrackPipline:
 #
 # 1. Load a model and go straight to paralellization. So just get the inference model, then pass
 #    the model as a function parameter and boom.
-# 
+#
 # 2. Load all models for an embedding (This action will be kept linear for simplicity).
+
+
+
+"""
+Thoughts on model loading.
+
+What seems to be taking a large chunk of time here is the loading of Embedding Models and Inference
+Models from Essentia... Of course, this is something that I would like to avoid. 
+
+Preloading these models would be the ideal scenario as I've considered so far. An idea of this 
+would be that I ge the pipeline running, and while it works on loading the tracks and then getting
+the metadata the spotify API featuers, then another thread, fork, process, would be running in the
+background loading up all the models.
+
+I'm not exactly sure how I could implement this in Python In C I would just run a fork, a child
+process at the start while all of the other actions are running... 
+
+
+NOTE
+Apparently loading doesn't take much... barely any time at all actually, I'd reckon it should take
+less than 5 seconds for all models to be loaded. So I think that for the sake of readability, I won't
+be pre-loading the models.
+"""
