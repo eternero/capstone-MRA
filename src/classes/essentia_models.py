@@ -6,6 +6,7 @@ from essentia.standard import (
     TensorflowPredict2D,
     TensorflowPredictEffnetDiscogs,
 )
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
 class EssentiaModel:
@@ -41,9 +42,10 @@ class EssentiaModel:
                             used if the current object is an ML Model.
         """
         self.graph_filename = graph_filename
-        self.output = output
-        self.algorithm = algorithm
-        self.embeddings = embeddings
+        self.output         = output
+        self.algorithm      = algorithm
+        self.embeddings     = embeddings
+        self.model          = None
 
     def get_model(self) -> Any:
         """Returns the instantiated model or embedding algorithm.
@@ -54,10 +56,13 @@ class EssentiaModel:
         Returns:
             The instantiated Essentia TensorFlow model/embedding.
         """
-        return self.algorithm(
-            graphFilename=self.graph_filename,
-            output=self.output,
-        )
+        if not self.model: # The addition of this should allow for caching of inference models.
+            self.model = self.algorithm(
+                graphFilename=self.graph_filename,
+                output=self.output,
+                )
+
+        return self.model
 
     def get_graph_filename(self) -> str:
         """Returns the graph filename."""
@@ -140,10 +145,10 @@ essentia_models_dict =  {
                                               timbre_effnet_model,
                                               danceability_effnet_model
                                             ],
-                        # msd_musicnn_emb:    [
-                        #                       danceability_effnet_model,
-                        #                       voice_instrumental_musicnn_model,
-                        #                       mood_happy_musicnn_model,
-                        #                       mood_aggressive_musicnn_model
-                        #                     ]
+                        msd_musicnn_emb:    [
+                                              danceability_effnet_model,
+                                              voice_instrumental_musicnn_model,
+                                              mood_happy_musicnn_model,
+                                              mood_aggressive_musicnn_model
+                                            ]
                         }
