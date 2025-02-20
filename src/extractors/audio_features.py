@@ -3,11 +3,12 @@ NOTE This code is still in development, trying out different features. Nonethele
 stick to essentia it might be best to join this with classes/essentia_models.py
 """
 
-# Imports
+from functools import lru_cache
 from typing import Callable, TYPE_CHECKING
 import librosa
 import numpy as np
 import essentia.standard as es
+from src.classes.essentia_models import EssentiaModel
 
 # Import Track only for type-checking; this import will not be executed at runtime.
 if TYPE_CHECKING:
@@ -21,16 +22,27 @@ class FeatureExtractor:
 
     @staticmethod
     def retrieve_model_features(track : "Track",
-                                embedding_model : Callable,
-                                inference_model : Callable,
-                                feature_name    : str
+                                embedding_model : EssentiaModel,
+                                inference_model : EssentiaModel,
                                 ):
         """
         ...
         """
-        track_embeddings  = embedding_model(track.track_mono)
-        model_predictions = inference_model(track_embeddings)
-        track.features[feature_name] = np.mean(model_predictions, axis=0)
+        print(f"Extracting Features for {track.track_path}")
+
+        embedding_callable = getattr(es, embedding_model.get_algorithm())
+        inference_callable = getattr(es, inference_model.get_algorithm())
+
+        embeddings_tf = embedding_callable(graphFilename = embedding_model.get_graph_filename(),
+                                           output = embedding_model.get_output())
+
+        inference_tf = inference_callable(graphFilename = inference_model.get_graph_filename(),
+                                           output = inference_model.get_output())
+
+
+        track_embeddings  = embeddings_tf(track.track_mono)
+        model_predictions = inference_tf(track_embeddings)
+        track.features[inference_model.get_graph_filename()] = np.mean(model_predictions, axis=0)
 
     @staticmethod
     def retrieve_bpm_re2013(track : "Track"):
