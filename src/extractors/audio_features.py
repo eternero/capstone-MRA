@@ -9,10 +9,21 @@ import librosa
 import numpy as np
 import essentia.standard as es
 from src.classes.essentia_models import EssentiaModel
+from pprint import pprint
 
 # Import Track only for type-checking; this import will not be executed at runtime.
 if TYPE_CHECKING:
     from src.classes.track import Track
+
+
+@lru_cache(None)
+def load_essentia_model(algorithm_name : str, graph_filename : str, output_name : str):
+    """..."""
+    model_callable = getattr(es, algorithm_name)
+    model_tf       = model_callable(graphFilename = graph_filename,
+                                    output        = output_name)
+    return model_tf
+
 
 class FeatureExtractor:
     """
@@ -21,28 +32,27 @@ class FeatureExtractor:
     """
 
     @staticmethod
-    def retrieve_model_features(track : "Track",
+    def retrieve_model_features_v2(track : "Track",
                                 embedding_model : EssentiaModel,
                                 inference_model : EssentiaModel,
                                 ):
         """
         ...
         """
-        print(f"Extracting Features for {track.track_path}")
+        embeddings_tf = load_essentia_model(embedding_model.get_algorithm(),
+                                           embedding_model.get_graph_filename(),
+                                           embedding_model.get_output())
 
-        embedding_callable = getattr(es, embedding_model.get_algorithm())
-        inference_callable = getattr(es, inference_model.get_algorithm())
-
-        embeddings_tf = embedding_callable(graphFilename = embedding_model.get_graph_filename(),
-                                           output = embedding_model.get_output())
-
-        inference_tf = inference_callable(graphFilename = inference_model.get_graph_filename(),
-                                           output = inference_model.get_output())
+        inference_tf = load_essentia_model(inference_model.get_algorithm(),
+                                           inference_model.get_graph_filename(),
+                                           inference_model.get_output())
 
 
         track_embeddings  = embeddings_tf(track.track_mono)
         model_predictions = inference_tf(track_embeddings)
         track.features[inference_model.get_graph_filename()] = np.mean(model_predictions, axis=0)
+        return track
+
 
     @staticmethod
     def retrieve_bpm_re2013(track : "Track"):

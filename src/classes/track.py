@@ -7,6 +7,8 @@ import random
 from typing import Any, List, Dict, Callable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 
+
+import pandas as pd
 from dotenv import load_dotenv
 from essentia.standard import MonoLoader
 from requests.exceptions import HTTPError, Timeout
@@ -15,45 +17,6 @@ from src.classes.essentia_models import EssentiaModel
 from src.extractors.audio_features import FeatureExtractor
 from src.extractors.spotify_api import SpotifyAPI, request_access_token
 
-
-import numpy as np
-
-# Global variables to hold the models and feature name in each worker process.
-global_embedding_model = None
-global_inference_model = None
-global_feature_name = None
-
-def init_essentia_worker(embedding_model_callable, inference_model_callable, feature_name: str):
-    """
-    Initializer for each worker process. It loads the Essentia models into global variables.
-    
-    Args:
-        embedding_model_callable (Callable): A callable that returns the embedding model.
-        inference_model_callable (Callable): A callable that returns the inference model.
-        feature_name (str): The name of the feature to extract.
-    """
-    global global_embedding_model, global_inference_model, global_feature_name
-    global_embedding_model = embedding_model_callable()  # Load the embedding model
-    global_inference_model = inference_model_callable()  # Load the inference model
-    global_feature_name = feature_name
-
-def retrieve_features_worker(track):
-    """
-    Worker function to extract audio features for a single track using the global Essentia models.
-    
-    Args:
-        track (Track): A Track object.
-        
-    Returns:
-        The Track object with the extracted feature added.
-    """
-    # Compute track embeddings using the global embedding model.
-    track_embeddings = global_embedding_model(track.track_mono)
-    # Get model predictions using the global inference model.
-    model_predictions = global_inference_model(track_embeddings)
-    # Compute the mean prediction and store it in the track's features.
-    track.features[global_feature_name] = np.mean(model_predictions, axis=0)
-    return track
 
 
 class Track:
@@ -234,38 +197,6 @@ class TrackPipeline:
         return results
 
 
-    def run_parallel_feature_extraction(self,
-                                        embedding_model_obj: Any,
-                                        inference_model_obj: Any,
-                                        feature_name: str,
-                                        num_workers: int = os.cpu_count()) -> None:
-        """
-        Parallelizes audio feature extraction using ProcessPoolExecutor with an initializer.
-    
-        Args:
-            embedding_model_obj: An object with a get_model() method to load the embedding model.
-            inference_model_obj: An object with a get_model() method to load the inference model.
-            feature_name (str): The name of the feature being extracted.
-            num_workers (int, optional): Number of worker processes.
-        """
-        # Use ProcessPoolExecutor with initializer to load the heavy models in each worker.
-        with ProcessPoolExecutor(max_workers=num_workers,
-                                  initializer=init_essentia_worker,
-                                  initargs=(embedding_model_obj.get_model,
-                                            inference_model_obj.get_model,
-                                            feature_name)
-                                 ) as executor:
-            futures = [
-                executor.submit(retrieve_features_worker, track)
-                for track in self.track_list
-            ]
-            for future in as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    print(f"Error processing a track in feature extraction: {e}")
-
-
     def run_pipeline(self, essentia_models_dict : Dict[EssentiaModel, List[EssentiaModel]]
                     ) -> List[Track]:
         """
@@ -292,7 +223,7 @@ class TrackPipeline:
             print(f"Retrieved {len(self.track_list)} tracks.")
 
             # Reduce to 20 for the sake of testing
-            self.track_list = self.track_list[:20]
+            self.track_list = self.track_list[:100]
 
         # -----------------------------------------------------------------------------------------
         # Step 1 : Metadata Extraction and Spotify API Features Extraction (Parallel)
@@ -310,75 +241,68 @@ class TrackPipeline:
         # -----------------------------------------------------------------------------------------
         # Step 2 : Essentia Models Extraction (TODO : Needs to be concurrent)
         # -----------------------------------------------------------------------------------------
-        for essentia_embeddings_obj, essentia_model_list in essentia_models_dict.items():
+        for essentia_embeddings, essentia_model_list in essentia_models_dict.items():
 
-            for inference_model_obj in essentia_model_list:
-                feature_name = inference_model_obj.get_graph_filename()
-                print(f"CURRENT MODEL: {feature_name}")
-                self.run_parallel_feature_extraction(essentia_embeddings_obj,
-                                                     inference_model_obj,
-                                                     feature_name,
-                                                    )
+            for essentia_model in essentia_model_list:
 
+                start  = time.time()
+                result = self.run_in_parallel(self.audio_feature_extractor.retrieve_model_features_v2,
+                                     self.track_list,
+                                     essentia_embeddings,       # First the embeddings
+                                     essentia_model,            # then the inference model
+                                     executor_type="process"
+                                    )
+                
+                self.track_list = [track for track in result if track is not None]
+                print(f"Executed in {time.time() - start}s")
 
-        # -----------------------------------------------------------------------------------------
-        # Step 3 : Essentia Algorithms Extraction
-        # -----------------------------------------------------------------------------------------
-
-        # NOTE : I could go about the above in two ways... we hardcode the algorithms that we will
-        #        be using for feature retrieval or we do something similar to the previous step...
-        #
-        #        Providing a list of methods that will be used should work as well. For example, we
-        #        can have an `add_pipeline_step()` method to which we provide it callables such as
-        #               FeatureExtractor.retrieve_bpm_re2013,
-        #               FeatureExtractor.retrieve_bpm_librosa
-        #
-        #        We just have to standardize these methods so that they all receive the same input,
-        #        a `Track` object representing the current track. This should work even with
-        #        librosa since it also takes a MonoLoader for its function inputs.
         return self.track_list
 
 
+    def get_track_dataframe(self) -> pd.DataFrame:
+        """
+        This method is to be used only once the `run_pipeline()` method has been run and 
+        succesfully completed. It will compile all of the track features into one huge dataframe. 
+        These features will only be acquired from the dictionary stored in `track.features`.
 
-# TODO : Method that turns all this shit into a Pandas DF
+        Additionally, the tracks will be 'tagged' with the first four columns, which will include
 
+                    FILENAME  |  ARTIST  |  TITLE  |  ALBUM
 
+        These are all attributes which can be acquired from `track.metadata` as specified in the 
+        column names (e.g. filename = track.get_metadata()['FILENAME']) and these MUST be the first
+        couple of columns since they allow to easily identify the tracks when visually analyzing...
 
-# NOTE I'm thinking of two ways of parallelizing the Essentia Model calls.
-#
-# As ever, I must be aware that the parallelizing or anything really, first requires for the
-# embeddings to be loaded. That is done on the outside then, since we will only load embeddings
-# once or twice.
-#
-#
-# What I would like to avoid however, is to load models far too often. That I can easily avoid.
-# So, what are the two ways I'm thinking about. Actually I think I've got three maybe... idk
-#
-#
-# 1. Load a model and go straight to paralellization. So just get the inference model, then pass
-#    the model as a function parameter and boom.
-#
-# 2. Load all models for an embedding (This action will be kept linear for simplicity).
+        NOTE : Feature Names found on `track.features` are not all predetermined due to the 
+        the different Essentia Models that might be used. This means that one will likely have to
+        first retrieve all of the `key` values from `track.features` before proceeding with the
+        creation of the dataframe.
 
+        Or perhaps, given that every single track in `self.track_list` will undoubtedly contain the
+        same features, then the dataframe could be automatically done or something else could be 
+        done i don't know...
+        """
+        rows = []
+        # Define the required metadata columns
+        required_columns = ["FILENAME", "ARTIST", "TITLE", "ALBUM"]
 
+        for track in self.track_list:
+            # Get metadata (using .get ensures missing keys return None)
+            metadata = {col: track.metadata.get(col, None) for col in required_columns}
+            # Merge with features (which may have arbitrary keys)
+            row = {}
+            row.update(metadata)
+            row.update(track.features)
+            rows.append(row)
 
-"""
-Thoughts on model loading.
+        # Create DataFrame from list of row dictionaries.
+        df = pd.DataFrame(rows)
 
-What seems to be taking a large chunk of time here is the loading of Embedding Models and Inference
-Models from Essentia... Of course, this is something that I would like to avoid. 
+        # # Determine all columns in the DataFrame.
+        # all_columns = list(df.columns)
+        # # Ensure required columns are first; maintain their order.
+        # remaining_columns = [col for col in all_columns if col not in required_columns]
+        # new_order = required_columns + remaining_columns
+        # df = df[new_order]
 
-Preloading these models would be the ideal scenario as I've considered so far. An idea of this 
-would be that I ge the pipeline running, and while it works on loading the tracks and then getting
-the metadata the spotify API featuers, then another thread, fork, process, would be running in the
-background loading up all the models.
-
-I'm not exactly sure how I could implement this in Python In C I would just run a fork, a child
-process at the start while all of the other actions are running... 
-
-
-NOTE
-Apparently loading doesn't take much... barely any time at all actually, I'd reckon it should take
-less than 5 seconds for all models to be loaded. So I think that for the sake of readability, I won't
-be pre-loading the models.
-"""
+        return df
