@@ -1,7 +1,6 @@
 """
 ...
 """
-
 import os
 from typing import Any, Dict, Optional
 from mutagen.id3 import ID3

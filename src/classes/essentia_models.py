@@ -29,7 +29,7 @@ class EssentiaModel:
         self,
         graph_filename: str,
         output        : str,
-        algorithm     : str,
+        algorithm     : Any,
         embeddings    : 'EssentiaModel' = None,
     ) -> None:
         """Initializes an EssentiaModel instance.
@@ -102,14 +102,26 @@ msd_musicnn_emb = EssentiaModel(
 # ------------------------------------------------------------------------------
 # Effnet Models
 # ------------------------------------------------------------------------------
-timbre_effnet_model = EssentiaModel(
+timbre_effnet_model             = EssentiaModel(
     graph_filename='src/models/timbre-discogs-effnet-1.pb',
     output='model/Softmax',
     algorithm='TensorflowPredict2D',
 )
 
-danceability_effnet_model = EssentiaModel(
+danceability_effnet_model      = EssentiaModel(
     graph_filename='src/models/danceability-discogs-effnet-1.pb',
+    output='model/Softmax',
+    algorithm='TensorflowPredict2D',
+)
+
+acoustic_effnet_model           = EssentiaModel(
+    graph_filename='src/models/mood_acoustic-discogs-effnet-1.pb',
+    output='model/Softmax',
+    algorithm='TensorflowPredict2D',
+)
+
+voice_instrumental_effnet_model = EssentiaModel(
+    graph_filename='src/models/voice_instrumental-discogs-effnet-1.pb',
     output='model/Softmax',
     algorithm='TensorflowPredict2D',
 )
