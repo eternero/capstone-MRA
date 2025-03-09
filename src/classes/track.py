@@ -4,14 +4,15 @@
 import os
 import time
 import random
-from typing import Any, List, Dict, Callable
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from typing import Any, List, Dict
 
 
 import pandas as pd
 from dotenv import load_dotenv
 from essentia.standard import MonoLoader
 from requests.exceptions import HTTPError, Timeout
+
+from src.utils.parallel import run_in_parallel
 from src.extractors.metadata import MetadataExtractor
 from src.classes.essentia_models import EssentiaModel
 from src.extractors.audio_features import FeatureExtractor
@@ -123,7 +124,13 @@ class TrackPipeline:
 
         # Once we've got the metadata, we can proceed to get the Spotify API Features
         track_name       = track.metadata['TITLE']
-        track_artist     = track.metadata['ARTIST']
+        track_album      = track.metadata['ALBUM']
+        track_artist     = track.metadata['ALBUM_ARTIST']
+        album_artist     = track.metadata['ALBUM_ARTIST']
+
+        # If possible, overwrite the track artist w/ album artist to avoid issues in songs with fts
+        track_artist     = album_artist if album_artist else track_artist
+
         print(f"Current : {track_artist} : {track_name}")
 
         # Handle errors using a timeout with exponential backoff. Let us define our params first.
@@ -131,12 +138,13 @@ class TrackPipeline:
         base_delay  = 1     # initial delay in seconds.
         retries     = 0     # used to track number of retries.
 
-
+        # Use exponential backoff until request to Spotify API is successful.
         while True:
             try:
                 spotify_features = self.spotify_api_extractor.get_spotify_features(track_artist,
-                                                                                track_name,
-                                                                                access_token)
+                                                                                   track_name,
+                                                                                   track_album,
+                                                                                   access_token)
                 track.update_features(spotify_features)
                 break   # Upon success, exit the loop.
 
@@ -155,48 +163,6 @@ class TrackPipeline:
                 print(f"Retrying in {delay:.2f} seconds...")
                 time.sleep(delay)
 
-
-    def run_in_parallel(self, func   : Callable,
-                        item_list    : list[Any], *args,
-                        num_workers  : int = os.cpu_count(),
-                        executor_type: str = "process",
-                        **kwargs)   -> list[Any]:
-        """
-        Runs the provided function in parallel for each item in item_list. This is essentially
-        a wrapper of the concurrent.futures XPoolExecutor methods adapted to our use case.
-
-        Args:
-            func          : The method to be run in parallel.
-            item_list     : Will either be a list of all track filenames, or a list of all tracks.
-            num_workers   : Number of workers to use for our executor.
-            executor_type : The executor to be used, either ThreadPoolExec or ProcessPoolExec.
-        """
-
-        # First, determine which Executor will be used.
-        if executor_type.lower() == "process":
-            Executor = ProcessPoolExecutor
-        else:
-            Executor = ThreadPoolExecutor
-
-        results = []    # List to collect all results later on.
-        with Executor(max_workers=num_workers) as executor:
-            futures = [
-                executor.submit(func, item, *args, **kwargs)
-                for item in item_list
-            ]
-
-            # Wait for all tasks to complete and handle exceptions.
-            for future in as_completed(futures):
-                try:
-                    result = future.result()    # This is done to handle
-                    results.append(result)      # all results asynchronously
-                                                # and individually.
-                except Exception as e:
-                    print(f"Error processing a track: {e}")
-
-        return results
-
-
     def run_pipeline(self, essentia_models_dict : Dict[EssentiaModel, List[EssentiaModel]]
                     ) -> List[Track]:
         """
@@ -214,7 +180,7 @@ class TrackPipeline:
         """
         if not self.track_list:
             track_filenames = os.listdir(self.base_path)
-            result_tracks   = self.run_in_parallel(self.load_single_track,
+            result_tracks   = run_in_parallel(self.load_single_track,
                                                    track_filenames,
                                                    executor_type="process")
 
@@ -233,7 +199,7 @@ class TrackPipeline:
         client_secret = os.environ.get('CLIENT_SECRET')
         access_token  = request_access_token(client_id, client_secret)
 
-        self.run_in_parallel(self._get_metadata_and_spotify,
+        run_in_parallel(self._get_metadata_and_spotify,
                              self.track_list, access_token,
                              executor_type="thread"
                             )
@@ -246,13 +212,13 @@ class TrackPipeline:
             for essentia_model in essentia_model_list:
 
                 start  = time.time()
-                result = self.run_in_parallel(self.audio_feature_extractor.retrieve_model_features_v2,
+                result = run_in_parallel(self.audio_feature_extractor.retrieve_model_features_v2,
                                      self.track_list,
                                      essentia_embeddings,       # First the embeddings
                                      essentia_model,            # then the inference model
                                      executor_type="process"
                                     )
-                
+
                 self.track_list = [track for track in result if track is not None]
                 print(f"Executed in {time.time() - start}s")
 
