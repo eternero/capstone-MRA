@@ -6,9 +6,10 @@ import time
 import random
 from typing import Any, List, Dict
 
-
+import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
+import essentia
 from essentia.standard import MonoLoader
 from requests.exceptions import HTTPError, Timeout
 
@@ -18,6 +19,9 @@ from src.classes.essentia_models import EssentiaModel
 from src.extractors.audio_features import FeatureExtractor
 from src.extractors.spotify_api import SpotifyAPI, request_access_token
 
+# DISABLE LOGGING. ANNOYING!
+essentia.log.infoActive = False
+essentia.log.warningActive = False
 
 
 class Track:
@@ -85,39 +89,15 @@ class TrackPipeline:
         # NOTE : Make it so that the `FeatureExtractor` class works similar
         # to these previous two which work on a single track, rather than a list.
 
-    def load_single_track(self, track_filename: str) -> Track:
-        """
-        Loads a single track and returns a Track object.
-    
-        Args:
-            track_filename : The filename of the track.
-    
-        Returns:
-            Track: A Track object if successful, or None if loading fails.
-        """
-        full_path = os.path.join(self.base_path, track_filename)
-        if os.path.isfile(full_path):
-            try:
-                track_mono = MonoLoader(filename       =full_path,
-                                        sampleRate     =self.sample_rate,
-                                        resampleQuality=0)()
-
-                track = Track(track_path=full_path, track_mono=track_mono)
-                print(f"Loaded track: {track_filename}")
-                return track
-
-            except Exception as e:
-                print(f"Error loading track {track_filename}: {e}")
-        return None
-
-
-    def _get_metadata_and_spotify(self, track : Track, access_token : str):
+    def _get_metadata_and_spotify(self, track_path : Track, access_token : str):
         """Acquires the metadata and Spotify API features for a single track.
 
         Args:
-            track        : The track for which we will be acquiring its metadata and features.
+            track_path   : The path to the track for which we will be acquiring its features.
             access_token : The access token needed to make the Spotify API requests.
         """
+        # Initialize a `Track` object with a dummy track_mono since loading isn't needed yet.
+        track    = Track(track_path=track_path, track_mono= np.array([]))
         metadata = self.metadata_extractor.extract(track.track_path)
         track.update_metadata(metadata)
 
@@ -125,7 +105,7 @@ class TrackPipeline:
         # Once we've got the metadata, we can proceed to get the Spotify API Features
         track_name       = track.metadata['TITLE']
         track_album      = track.metadata['ALBUM']
-        track_artist     = track.metadata['ALBUM_ARTIST']
+        track_artist     = track.metadata['ARTIST']
         album_artist     = track.metadata['ALBUM_ARTIST']
 
         # If possible, overwrite the track artist w/ album artist to avoid issues in songs with fts
@@ -146,7 +126,7 @@ class TrackPipeline:
                                                                                    track_album,
                                                                                    access_token)
                 track.update_features(spotify_features)
-                break   # Upon success, exit the loop.
+                return track
 
             # If we catch an error, we retry and delay our calls until we find success.
             except (HTTPError, Timeout, ConnectionError) as err:
@@ -178,18 +158,6 @@ class TrackPipeline:
                 This is because multiple models can depend on the same embeddings, 
                 and containing them as such provides an efficient approach..
         """
-        if not self.track_list:
-            track_filenames = os.listdir(self.base_path)
-            result_tracks   = run_in_parallel(self.load_single_track,
-                                                   track_filenames,
-                                                   executor_type="process")
-
-            # Filter the results to only maintain retrieved tracks.
-            self.track_list = [track for track in result_tracks if track is not None]
-            print(f"Retrieved {len(self.track_list)} tracks.")
-
-            # Reduce to 20 for the sake of testing
-            self.track_list = self.track_list[:100]
 
         # -----------------------------------------------------------------------------------------
         # Step 1 : Metadata Extraction and Spotify API Features Extraction (Parallel)
@@ -198,30 +166,30 @@ class TrackPipeline:
         client_id     = os.environ.get('CLIENT_ID')
         client_secret = os.environ.get('CLIENT_SECRET')
         access_token  = request_access_token(client_id, client_secret)
+        filename_list = [os.path.join(self.base_path, filename)
+                         for filename in os.listdir(self.base_path)
+                         if filename.endswith(('.flac', '.mp3'))]
 
-        run_in_parallel(self._get_metadata_and_spotify,
-                             self.track_list, access_token,
+        result_tracks = run_in_parallel(self._get_metadata_and_spotify,
+                             filename_list, access_token,
                              executor_type="thread"
-                            )
+                        )
+
+        self.track_list = [track for track in result_tracks if track is not None][:100] # Limit 100
 
         # -----------------------------------------------------------------------------------------
         # Step 2 : Essentia Models Extraction (TODO : Needs to be concurrent)
         # -----------------------------------------------------------------------------------------
-        for essentia_embeddings, essentia_model_list in essentia_models_dict.items():
+        start  = time.time()
+        result = run_in_parallel(self.audio_feature_extractor.retrieve_all_model_features,
+                                    self.track_list,
+                                    essentia_models_dict,
+                                    executor_type="process"
+                 )
 
-            for essentia_model in essentia_model_list:
+        self.track_list = [track for track in result if track is not None]
 
-                start  = time.time()
-                result = run_in_parallel(self.audio_feature_extractor.retrieve_model_features_v2,
-                                     self.track_list,
-                                     essentia_embeddings,       # First the embeddings
-                                     essentia_model,            # then the inference model
-                                     executor_type="process"
-                                    )
-
-                self.track_list = [track for track in result if track is not None]
-                print(f"Executed in {time.time() - start}s")
-
+        print(f"Executed in {time.time() - start}s")
         return self.track_list
 
 

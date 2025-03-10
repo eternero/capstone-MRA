@@ -8,6 +8,7 @@ from typing import Callable, TYPE_CHECKING
 import librosa
 import numpy as np
 import essentia.standard as es
+from essentia.standard import MonoLoader
 from src.classes.essentia_models import EssentiaModel
 from pprint import pprint
 
@@ -30,27 +31,38 @@ class FeatureExtractor:
     This class is in charge of providing methods which facilitate the creation of a data pipeline
     for the audio features that we will be extracting in this project.
     """
-
     @staticmethod
-    def retrieve_model_features_v2(track : "Track",
-                                embedding_model : EssentiaModel,
-                                inference_model : EssentiaModel,
-                                ):
-        """
-        ...
-        """
-        embeddings_tf = load_essentia_model(embedding_model.get_algorithm(),
-                                           embedding_model.get_graph_filename(),
-                                           embedding_model.get_output())
+    def retrieve_all_model_features(track      : "Track",
+                                    model_dict : dict[EssentiaModel, list[EssentiaModel]]) -> "Track":
 
-        inference_tf = load_essentia_model(inference_model.get_algorithm(),
-                                           inference_model.get_graph_filename(),
-                                           inference_model.get_output())
+        # Load the track mono so that we can process it
+        track.track_mono = MonoLoader(filename        = track.track_path,
+                                      sampleRate      = 44100, # Hardcoded for now, since
+                                      resampleQuality = 0)()   # all our tracks are 44kHz
 
+        # Loop through the embedding -> model list in dictionary
+        for embedding_model, inf_model_list in model_dict.items():
 
-        track_embeddings  = embeddings_tf(track.track_mono)
-        model_predictions = inference_tf(track_embeddings)
-        track.features[inference_model.get_graph_filename()] = np.mean(model_predictions, axis=0)
+            # Load and Cache the Embedding Model
+            embeddings_tf = load_essentia_model(embedding_model.get_algorithm(),
+                                                embedding_model.get_graph_filename(),
+                                                embedding_model.get_output())
+
+            # Compute the embeddings
+            track_embeddings = embeddings_tf(track.track_mono)
+
+            # Load each inference model in the list.
+            for inf_model in inf_model_list:
+                inference_tf = load_essentia_model(inf_model.get_algorithm(),
+                                                  inf_model.get_graph_filename(),
+                                                  inf_model.get_output())
+
+                # Gather Inference Predictions and save it as a feature.
+                predictions  = inference_tf(track_embeddings)
+                feature_name = [inf_model.get_classifiers()[0], inf_model.get_model_family()]
+                feature_name = '_'.join(feature_name)
+                track.features[feature_name] = np.mean(predictions, axis=0)[0]
+
         return track
 
 
