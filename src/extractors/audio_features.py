@@ -4,13 +4,12 @@ stick to essentia it might be best to join this with classes/essentia_models.py
 """
 
 from functools import lru_cache
-from typing import Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING
 import librosa
 import numpy as np
 import essentia.standard as es
 from essentia.standard import MonoLoader
 from src.classes.essentia_models import EssentiaModel
-from pprint import pprint
 
 # Import Track only for type-checking; this import will not be executed at runtime.
 if TYPE_CHECKING:
