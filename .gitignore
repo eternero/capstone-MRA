@@ -4,6 +4,7 @@ src/.env
 .vscode/
 .DS_Store
 .cache*
+**.csv
 
 # Ignore all __pycache__ directories recursively
 **/__pycache__/*
