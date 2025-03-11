@@ -84,7 +84,6 @@ async def retrieve_rym_data(browser: Browser, artist_name: str, album_name: str)
 
     # Define constants and other vars.
     results         =  {}
-    page_failed     = False
     span_class_dict =  {
                         'pri_genres' : 'release_pri_genres',
                         'sec_genres' : 'release_sec_genres',
@@ -109,25 +108,24 @@ async def retrieve_rym_data(browser: Browser, artist_name: str, album_name: str)
 
 
         # Commence gathering the data...
-        for span_name, span_class in span_class_dict.items():
-
-            try:    # NOTE : Susceptible to CAPTCHA taking longer than 10s.
-                element    = await page.select(f"span[class={span_class}]")
-                all_data   = element.text_all
+        try:    # NOTE : Susceptible to CAPTCHA taking longer than 10s.
+            for span_name, span_class in span_class_dict.items():
+                element  = await page.select(f"span[class={span_class}]")
+                all_data = element.text_all
 
                 logging.info("Successfully retreived data from RYM: %s", span_class)
                 results[span_name] = [data.strip().lower() for data in all_data.split(",")]
 
-            except Exception as e:
-                logging.error("Failed to retrieve data from RMY, span class %s: %s",
-                              span_class, str(e))
-                page_failed = True
-                break
 
-        # If we didn't encounter any errors while gathering the data for our page, then we proceed.
-        if not page_failed:
-            break
-        page_failed = False
+        except Exception as e:
+            # If any span fails, we skip this release type altogether.
+            logging.error("Failed to retrieve data for release_type='%s'. Reason: %s",
+                          release_type, e)
+            continue
+
+        # We can only possibly get here if there were no exceptions
+        # when acquiring the data. Meaning the retrieval succeeded.
+        break
 
     return results
 
@@ -163,6 +161,10 @@ async def retrieve_all_albums_data(album_dict: dict[str, str]) -> list[dict[str,
 
         else:
             album_data = await retrieve_rym_data(browser, artist_name, album_name)
+            if not album_data:  # If no data was retrieved, there must've been failure. Thus, skip.
+                print(f"Could not find data for {artist_name} : {album_name}")
+                continue
+
             album_cache[album_key] = album_data
 
         # Save the data we've acquired
@@ -195,6 +197,7 @@ if __name__ == '__main__':
     a_dict = {
         'bladee': 'red-light',
         'ecco2k': 'e',
+        'fakeal': 'bum',
         'burial': 'untrue',
         'cocteau-twins': 'the-pink-opaque'
     }
