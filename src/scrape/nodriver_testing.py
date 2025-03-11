@@ -1,11 +1,10 @@
+"""..."""
 import os
 import json
 import random
-from librosa import ex
-import nodriver
-import logging
-from pprint import pprint
 import asyncio
+import logging
+import nodriver
 from nodriver import Tab, Browser
 
 # Configuring the logging
@@ -19,11 +18,11 @@ logging.basicConfig(
 PROGRESS_FILE = "progress.json"
 RESULT_FILE = "rym_result.json"
 
+
 async def save_progress(last_index: int, album_cache: dict):
     """
-    ...
-    Saves the last successful track index to a file.
-    If we get blocked (or IP banned) we know where we at
+    Saves the last successful track index to a file. This is useful in case of any interruptions
+    or errors during runtime, allowing us to know when was the progress cut off.
     """
     progress_data = {
         "last_index": last_index,
@@ -33,9 +32,9 @@ async def save_progress(last_index: int, album_cache: dict):
     with open(PROGRESS_FILE, "w") as f:
         json.dump(progress_data, f)
 
+
 async def load_progress() -> tuple[int, dict]:
     """
-    ...
     Loads the last successful track index from a file.
     """
     if os.path.exists(PROGRESS_FILE):
@@ -47,95 +46,91 @@ async def load_progress() -> tuple[int, dict]:
     return 0, {}
 
 
-async def human_like_delay():
-    """
-    ...
+async def check_for_error(page: Tab) -> bool:
+    """Checks if we've got an error when searching for our page."""
+    try:
+        # Attempt to select the element with a 1.5s timeout.
+        await page.select("div[class=page_error_content]", timeout=random.uniform(3.5,5))
+        return True    # There is an error, true!
 
-    Function to mimics random human interactions
-    Maybe add more time every 10-20 minutes
-    """
-    base_delay = random.uniform(1, 3)
-    random_movement = random.uniform(0.1, 0.5)
-    await asyncio.sleep(base_delay + random_movement)
+    except Exception:
+        # If any exception occurs, assume the element is not present
+        return False    # There are no errors, false!
 
 
 async def random_interactions(page: Tab):
     """
-    ...
-    Trying to mimic random human interactions
+    This method attempts to mimic human interactions when accessing a page. We're mainly
+    concerned with creating delays and scrolling through the page while data is retrieved.
     """
 
-    # 70% chance of scrolling randomly
-    if random.random() < 0.7:
-        scroll_amount  = random.randint(1, 5)
-        if random.random() < 0.5:
-            await page.scroll_down(scroll_amount)
-        else:
-            await page.scroll_up(scroll_amount)
-        await human_like_delay()
+    # Scroll three times with random directions and distances
+    for _ in range(3):
+        choice     = random.choice([True, False])
+        scroll_val = round(random.uniform(200, 600), 3)
 
-async def retrieve_rym_data(page : Tab, span_class:str,) -> list[str]:
-    """
-    ...
+        # Scroll up or down depending on the random values previously acquired.
+        scroll     = page.scroll_down if choice else page.scroll_up
+        await scroll(scroll_val)
 
-    Args:
-        span_class (str): _description_
-
-    Returns:
-        list[str]: _description_
-    """
-    try:
-        await random_interactions(page)
-        element = await page.select(f"span[class={span_class}]")
-        all_data = element.text_all
-        logging.info("Successfully retreived data from RYM: %s", span_class)
-        return [data.strip().lower() for data in all_data.split(",")]
-
-    except Exception as e:
-        logging.error("Failed to retrieve data from RMY, span class %s: %s", span_class, str(e))
-        return []
+        # Introduce a short delay between scrolls to mimic reading time
+        await asyncio.sleep(random.uniform(1, 3))
 
 
-
-async def retrieve_album_data(browser: Browser, artist_name: str, album_name: str):
+async def retrieve_rym_data(browser: Browser, artist_name: str, album_name: str) -> dict[str]:
     """
     ...
-
-    Args:
-        artist_name (str): _description_
-        album_name  (str): _description_
     """
-    # Define constants
-    span_classes =  {
-                      'pri_genres' : 'release_pri_genres',
-                      'sec_genres' : 'release_sec_genres',
-                      'pri_desc'   : 'release_pri_descriptors'
-                    }
 
-    # Define dictionary to save shit
-    results = {}
+    # Define constants and other vars.
+    results         =  {}
+    page_failed     = False
+    span_class_dict =  {
+                        'pri_genres' : 'release_pri_genres',
+                        'sec_genres' : 'release_sec_genres',
+                        'pri_desc'   : 'release_pri_descriptors'
+                        }
+    release_type_list = ['album', 'ep', 'mixtape', 'comp']
 
-    # Access the page
-    url = f"https://rateyourmusic.com/release/album/{artist_name}/{album_name}/"
-    logging.info("Accessing URL: %s", url)
+    for release_type in release_type_list:
 
-    try:    
-        page = await browser.get(url)
+        # Access the page
+        url   = f"https://rateyourmusic.com/release/{release_type}/{artist_name}/{album_name}/"
+        page  = await browser.get(url)
+        logging.info("Accessing URL: %s", url)
 
-        # Get all of our beautiful data
-        for span_name, span_class in span_classes.items():
-            span_data = await retrieve_rym_data(page, span_class)
-            results[span_name] = span_data
 
-        logging.info("Successfully retreived data for album: %s - %s", artist_name, album_name)
-        print(artist_name,album_name)
-        pprint(results)
-        print("\n" + "-" * 50 + "\n")
-        return results
-    
-    except Exception as e:
-        logging.error("Error retreiving album data for %s - %s: %s", artist_name, album_name, str(e))
-        return {}
+        # Check for errors...
+        error = await check_for_error(page)
+        if error:
+            await asyncio.sleep(random.uniform(1.5,3))
+            continue                    # If there is an error, try the next release type
+        await random_interactions(page) # Otherwise, randomize interactions while acquiring data.
+
+
+        # Commence gathering the data...
+        for span_name, span_class in span_class_dict.items():
+
+            try:    # NOTE : Susceptible to CAPTCHA taking longer than 10s.
+                element    = await page.select(f"span[class={span_class}]")
+                all_data   = element.text_all
+
+                logging.info("Successfully retreived data from RYM: %s", span_class)
+                results[span_name] = [data.strip().lower() for data in all_data.split(",")]
+
+            except Exception as e:
+                logging.error("Failed to retrieve data from RMY, span class %s: %s",
+                              span_class, str(e))
+                page_failed = True
+                break
+
+        # If we didn't encounter any errors while gathering the data for our page, then we proceed.
+        if not page_failed:
+            break
+        page_failed = False
+
+    return results
+
 
 async def retrieve_all_albums_data(album_dict: dict[str, str]) -> list[dict[str,str]]:
     """
@@ -149,41 +144,45 @@ async def retrieve_all_albums_data(album_dict: dict[str, str]) -> list[dict[str,
     """
     results = []
     browser = await nodriver.start()
-    # Load previous progress, if avaylable, if this fuckers ban us
+
+   # Load previous progress, if avaylable, if this fuckers ban us
     start_index, album_cache = await load_progress()
-    album_request_counter = 0 
+    album_request_counter = 0
 
     album_items = list(album_dict.items())
     total_albums = len(album_items)
 
     for i in range(start_index, total_albums):
         artist_name, album_name = album_items[i]
-        album_request_counter += 1
-        album_key = f"{artist_name}/{album_name}"
+        album_key               = f"{artist_name}/{album_name}"
+        album_request_counter   += 1
+
         if album_key in album_cache:
             logging.info("Using cached data for album: %s", album_key)
             album_data = album_cache[album_key]
-        else:
-            album_data = await retrieve_album_data(browser, artist_name, album_name)
-            album_cache[album_key] = album_data
-    
-        results.append({
-                "artist_name": artist_name,
-                "album_name": album_name,
-                "data": album_data
-        })
 
+        else:
+            album_data = await retrieve_rym_data(browser, artist_name, album_name)
+            album_cache[album_key] = album_data
+
+        # Save the data we've acquired
+        results.append({
+                        "artist_name": artist_name,
+                        "album_name" : album_name,
+                        "data"       : album_data
+                       })
         await save_progress(i, album_cache)
 
-        sleep_time = random.randint(2,4) + random.randint(1,1000) / 1000
-        logging.info("Sleeping for %.2f seconds before next request", sleep_time)
-        await asyncio.sleep(sleep_time)
-
+        # Every 20 requests, take a break of 10-30 seconds.
         if album_request_counter % 20 == 0:
-            long_break = random.randint(10, 30)
-            logging.info("Taking a long break for %d seconds after %d request", long_break, album_request_counter)
+            long_break = random.uniform(10, 30)
+            logging.info("Taking a long break for %d seconds after %d request",
+                         long_break, album_request_counter)
             await asyncio.sleep(long_break)
-    
+
+
+    # If we've managed to get all the data without any errors,
+    # write it in the `RESULT_FILE` to finish off.
     with open(RESULT_FILE, "w") as f:
         json.dump(results, f, indent=4)
 
@@ -197,12 +196,9 @@ if __name__ == '__main__':
         'bladee': 'red-light',
         'ecco2k': 'e',
         'burial': 'untrue',
-        "adele": "30",
-        "billie-eilish": "when-we-all-fall-asleep-where-do-we-go",
+        'cocteau-twins': 'the-pink-opaque'
     }
 
     logging.info("Starting scraping process")
     nodriver.loop().run_until_complete(retrieve_all_albums_data(a_dict))
     logging.info("Scraping process completed")
-    
-   
