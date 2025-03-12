@@ -19,7 +19,8 @@ class MetadataExtractor:
     @staticmethod
     def _process_field(field: Any) -> Any:
         """
-        Processes a metadata field that may be a list or a single value.
+        Processes a metadata field that may be a list or a single value. Real shit this doesn't even
+        fucking work because I get multiple artists all the fucking time because of commmas and fts.
         
         Args:
             field: The metadata field value.
@@ -66,10 +67,11 @@ class MetadataExtractor:
         audio = FLAC(track_path)
         return {
             "FILENAME": os.path.basename(track_path),
-            "ARTIST": MetadataExtractor._process_field(audio.get("artist") or audio.get("artists")),
-            "TITLE": MetadataExtractor._process_field(audio.get("title") or audio.get("song_name")),
-            "ALBUM": MetadataExtractor._process_field(audio.get("album") or audio.get("album_name")),
+            "ARTIST"  : MetadataExtractor._process_field(audio.get("artist") or audio.get("artists")),
+            "TITLE"   : MetadataExtractor._process_field(audio.get("title") or audio.get("song_name")),
+            "ALBUM"   : MetadataExtractor._process_field(audio.get("album") or audio.get("album_name")),
             "ALBUM_ARTIST": MetadataExtractor._process_field(audio.get("album_artist") or audio.get("albumartist")),
+            "RELEASE_YEAR": MetadataExtractor._process_field(audio.get("date") or audio.get("year"))
         }
 
     @staticmethod
@@ -87,8 +89,9 @@ class MetadataExtractor:
         tags = audio.tags
         return {
             "FILENAME": os.path.basename(track_path),
-            "ARTIST": tags.get("TPE1").text[0] if "TPE1" in tags and tags.get("TPE1").text else None,
-            "TITLE": tags.get("TIT2").text[0] if "TIT2" in tags and tags.get("TIT2").text else None,
-            "ALBUM": tags.get("TALB").text[0] if "TALB" in tags and tags.get("TALB").text else None,
+            "ARTIST"  : tags.get("TPE1").text[0] if "TPE1" in tags and tags.get("TPE1").text else None,
+            "TITLE"   : tags.get("TIT2").text[0] if "TIT2" in tags and tags.get("TIT2").text else None,
+            "ALBUM"   : tags.get("TALB").text[0] if "TALB" in tags and tags.get("TALB").text else None,
             "ALBUM_ARTIST": tags.get("TPE2").text[0] if "TPE2" in tags and tags.get("TPE2").text else None,
+            "RELEASE_YEAR": tags.get("TDRC").text[0] if "TDRC" in tags and tags.get("TDRC").text else None
         }
