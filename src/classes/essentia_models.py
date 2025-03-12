@@ -1,13 +1,6 @@
 """Classes and constants for representing Essentia ML Models and Embeddings."""
 
 from typing import Any
-from essentia.standard import (
-    TensorflowPredictMusiCNN,
-    TensorflowPredict2D,
-    TensorflowPredictEffnetDiscogs,
-)
-
-
 
 class EssentiaModel:
     """Represents either an Essentia Model or an Embedding.
@@ -69,31 +62,6 @@ class EssentiaModel:
 
         return self.model
 
-    def get_algorithm(self) -> str:
-        """Returns the algorithm."""
-        return self.algorithm
-
-    def get_graph_filename(self) -> str:
-        """Returns the graph filename."""
-        return self.graph_filename
-
-    def get_output(self) -> str:
-        """Returns the output node name."""
-        return self.output
-
-    def get_model_family(self) -> str:
-        """Returns the model_family."""
-        return self.model_family
-
-    def get_embeddings(self) -> 'EssentiaModel':
-        """Returns the embeddings EssentiaModel if it exists."""
-        return self.embeddings
-
-    def get_classifiers(self) -> list[str]:
-        """Returns the classifiers for the Model."""
-        return self.classifiers
-
-
 # ------------------------------------------------------------------------------
 # Discog Embeddings
 # ------------------------------------------------------------------------------
@@ -136,6 +104,14 @@ acoustic_effnet_model           = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['acoustic', 'non_acoustic'],
+    model_family   = "effnet"
+)
+
+tonal_atonal_effnet_model       = EssentiaModel(
+    graph_filename = 'src/models/tonal_atonal-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['tonal', 'atonal'],
     model_family   = "effnet"
 )
 
@@ -188,7 +164,10 @@ mood_aggressive_musicnn_model = EssentiaModel(
 essentia_models_dict =  {
                         discogs_effnet_emb: [
                                               timbre_effnet_model,
-                                              danceability_effnet_model
+                                              acoustic_effnet_model,
+                                              danceability_effnet_model,
+                                              voice_instrumental_effnet_model,
+
                                             ],
                         msd_musicnn_emb:    [
                                               danceability_effnet_model,
