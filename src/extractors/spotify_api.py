@@ -176,7 +176,8 @@ class SpotifyAPI:
                                   "uri"        : track_item['uri'],
                                   "sp_name"    : track_item['name'],
                                   "popularity" : track_item['popularity'],
-                                  "album_type" : track_item['album']['album_type']
+                                  "album_id"   : track_item['album']['id'],
+                                  "album_type" : track_item['album']['album_type'],
                                 }
             return spotify_features
 
