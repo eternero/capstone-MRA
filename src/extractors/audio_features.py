@@ -43,22 +43,22 @@ class FeatureExtractor:
         for embedding_model, inf_model_list in model_dict.items():
 
             # Load and Cache the Embedding Model
-            embeddings_tf = load_essentia_model(embedding_model.get_algorithm(),
-                                                embedding_model.get_graph_filename(),
-                                                embedding_model.get_output())
+            embeddings_tf = load_essentia_model(embedding_model.algorithm,
+                                                embedding_model.graph_filename,
+                                                embedding_model.output)
 
             # Compute the embeddings
             track_embeddings = embeddings_tf(track.track_mono)
 
             # Load each inference model in the list.
             for inf_model in inf_model_list:
-                inference_tf = load_essentia_model(inf_model.get_algorithm(),
-                                                  inf_model.get_graph_filename(),
-                                                  inf_model.get_output())
+                inference_tf = load_essentia_model(inf_model.algorithm,
+                                                  inf_model.graph_filename,
+                                                  inf_model.output)
 
                 # Gather Inference Predictions and save it as a feature.
                 predictions  = inference_tf(track_embeddings)
-                feature_name = [inf_model.get_classifiers()[0], inf_model.get_model_family()]
+                feature_name = [inf_model.classifiers[0], inf_model.model_family]
                 feature_name = '_'.join(feature_name)
                 track.features[feature_name] = np.mean(predictions, axis=0)[0]
 
@@ -66,24 +66,11 @@ class FeatureExtractor:
 
 
     @staticmethod
-    def retrieve_bpm_re2013(track : "Track"):
-        """
-        ...
-        """
-        rhythm_extractor = es.RhythmExtractor2013(method="multifeature")
-        bpm, beats, beats_confidence, _, _ = rhythm_extractor(track.get_track_mono())
-        print(track.get_track_path())
-        print("BPM:", bpm)
-        print("Beat positions (sec.):", beats)
-        print("Beat estimation confidence:", beats_confidence)
-        print("-"*100)
-
-    @staticmethod
     def retrieve_bpm_librosa(track : "Track"):
         """
         ...
         """
-        tempo, _ = librosa.beat.beat_track(y=track.get_track_mono(), sr = 44100)
-        print(track.get_track_path())
+        tempo, _ = librosa.beat.beat_track(y=track.track_mono, sr = 44100)
+        print(track.track_path)
         print(f"Detected BPM: {tempo}")
         print("-"*100)
