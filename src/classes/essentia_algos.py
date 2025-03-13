@@ -21,14 +21,13 @@ class EssentiaAlgo:
     @staticmethod
     def get_bpm_re2013(track : Track) -> tuple[float, list[float]]:
         """
-        ...
+        NOTE : This can also get beats and other necessary stuff
         """
         rhythm_extractor = es.RhythmExtractor2013(method="multifeature")
-        bpm, beats, _, _, _ = rhythm_extractor(track.track_mono)
+        bpm, _, _, _, _       = rhythm_extractor(track.track_mono)
 
         # Update the features for our track and return (bpm, beats)
-        track.features['bpm']   = bpm
-        return bpm, beats
+        track.features['bpm'] = bpm
 
 
     @staticmethod
@@ -38,9 +37,19 @@ class EssentiaAlgo:
 
 
     @staticmethod
-    def get_loudness(track : Track):
+    def get_intensity(track : Track):
+        """NOTE : Quality: outdated (non-reliable, poor accuracy). Yea, it fucking sucks"""
+        track.features['intensity'] = es.Intensity()(track.track_mono)
+
+
+    @staticmethod
+    def get_loudness_ebu_r128(track : Track):
         """..."""
-        track.features['loudness'] = es.Loudness()(track.track_mono)
+        stereo_signal, _, _, _, _, _              = es.AudioLoader(filename=track.track_path)()
+        _, _, integrated_loudness, loudness_range = es.LoudnessEBUR128()(stereo_signal)
+        track.features['integrated_loudness']     = integrated_loudness
+        track.features['loudness_range']          = loudness_range
+
 
 
     @staticmethod
@@ -50,7 +59,7 @@ class EssentiaAlgo:
         Oh well.
         """
         # Acquire the Loudness and Loudness Band Ratio
-        _, beats                           = EssentiaAlgo.get_bpm_re2013(track)
+        _, beats, _, _, _                  = es.RhythmExtractor2013()(track.track_mono)
         beat_loudness, loudness_band_ratio = es.BeatsLoudness(beats = beats)(track.track_mono)
 
         # Acauire the beatogram and save the time signature.
@@ -115,7 +124,9 @@ class EssentiaAlgo:
         window         = es.Windowing(type = 'hann')
         spectrum       = es.Spectrum()
         spec_peaks     = es.SpectralPeaks()
+        tristimulus    = es.Tristimulus()
         chord_detect   = es.ChordsDetection()
+        pitch_salience = es.PitchSalience()
 
         track_mono     = track.track_mono
         frame_size     = 1024
@@ -123,6 +134,8 @@ class EssentiaAlgo:
         # Apparently I'm supposed to gather these...
         pcp_list       = []
         key_list       = []
+        pitch_list     = []
+        timbre_list    = []
         mfcc_band_list = []
 
         for ix in range(0, len(track_mono), frame_size):
@@ -138,10 +151,14 @@ class EssentiaAlgo:
 
             freq, magnitudes = spec_peaks(spectrum_res)
             pcp              = hpcp(freq, magnitudes)
+            timbre           = tristimulus(freq, magnitudes)
             key, scale, _, _ = key_extract(pcp)
+            pitch            = pitch_salience(spectrum_res)
 
             pcp_list.append(pcp)
-            key_list.append((key, scale))
+            key_list.append((key, scale))       # TODO : Refactor to a "".join(list)
+            pitch_list.append(pitch)            #        for more efficiency...
+            timbre_list.append(timbre)
             mfcc_band_list.extend(mfcc_bands)
 
 
@@ -157,4 +174,6 @@ class EssentiaAlgo:
         track.features['most_common_keys']   = [f"{key}_{scale}" for ((key, scale), _) in top_keys]
         track.features['mfcc_peak_energy']   = max(mfcc_band_list)
         track.features['mfcc_avg_energy']    = np.mean(mfcc_band_list, axis=0)
-
+        track.features['pitch_salience']     = np.mean(pitch_list, axis=0)
+        track.features['tristimulus']        = tuple(np.mean(np.array(timbre_list), axis=0))
+        # Btw tristimulus and timbre are interchaneable. But the 'timbre' feature is reserved for models
