@@ -26,11 +26,11 @@ essentia.log.warningActive = False
 
 class Track:
     """
-    The Track object should encapsulate all of the necessary elements that we've determined to be 
+    The Track object should encapsulate all of the necessary elements that we've determined to be
     pertinent to describing and analyzing a song. This includes metadata, features extracted using
     essentia, and other information acquired from the SpotifyAPI (TODO).
 
-    This class implements the usage of others such as the MetadataExtractor, SpotifyAPI, 
+    This class implements the usage of others such as the MetadataExtractor, SpotifyAPI,
     EssentiaModels and FeatureExtractor. The last two essentially work towards the same thing,
     acquisition of features through essentia - and the first two are quite self-explanatory.
 
@@ -71,7 +71,7 @@ class Track:
 class TrackPipeline:
     """
     A data pipeline that processes audio tracks in a prescribed order:
-        1. Metadata Extraction 
+        1. Metadata Extraction
         2. Spotify API Extraction
         3. Additional Tag Extraction (e.g. Essentia Models / Algorithms, Librosa, TorchAudio)
     """
@@ -152,10 +152,10 @@ class TrackPipeline:
           3. Run any additional steps (Essentia Models, Essentia Algorithms, etc.)
 
         Args:
-            essentia_models_dict : This is a dictionary that contains pairs of 
+            essentia_models_dict : This is a dictionary that contains pairs of
                         `{Essentia Embeddings : List[Essentia Model]}`
-                 
-                This is because multiple models can depend on the same embeddings, 
+
+                This is because multiple models can depend on the same embeddings,
                 and containing them as such provides an efficient approach..
         """
 
@@ -175,13 +175,13 @@ class TrackPipeline:
                              executor_type="thread"
                         )
 
-        self.track_list = [track for track in result_tracks if track is not None][:100] # Limit 100
+        self.track_list = [track for track in result_tracks if track is not None][:100]
 
         # -----------------------------------------------------------------------------------------
-        # Step 2 : Essentia Models Extraction (TODO : Needs to be concurrent)
+        # Step 2 : Essentia Models Extraction
         # -----------------------------------------------------------------------------------------
         start  = time.time()
-        result = run_in_parallel(self.audio_feature_extractor.retrieve_all_model_features,
+        result = run_in_parallel(self.audio_feature_extractor.retrieve_all_essentia_features,
                                     self.track_list,
                                     essentia_models_dict,
                                     executor_type="process"
@@ -195,25 +195,25 @@ class TrackPipeline:
 
     def get_track_dataframe(self) -> pd.DataFrame:
         """
-        This method is to be used only once the `run_pipeline()` method has been run and 
-        succesfully completed. It will compile all of the track features into one huge dataframe. 
+        This method is to be used only once the `run_pipeline()` method has been run and
+        succesfully completed. It will compile all of the track features into one huge dataframe.
         These features will only be acquired from the dictionary stored in `track.features`.
 
         Additionally, the tracks will be 'tagged' with the first four columns, which will include
 
                     FILENAME  |  ARTIST  |  TITLE  |  ALBUM
 
-        These are all attributes which can be acquired from `track.metadata` as specified in the 
+        These are all attributes which can be acquired from `track.metadata` as specified in the
         column names (e.g. filename = track.get_metadata()['FILENAME']) and these MUST be the first
         couple of columns since they allow to easily identify the tracks when visually analyzing...
 
-        NOTE : Feature Names found on `track.features` are not all predetermined due to the 
+        NOTE : Feature Names found on `track.features` are not all predetermined due to the
         the different Essentia Models that might be used. This means that one will likely have to
         first retrieve all of the `key` values from `track.features` before proceeding with the
         creation of the dataframe.
 
         Or perhaps, given that every single track in `self.track_list` will undoubtedly contain the
-        same features, then the dataframe could be automatically done or something else could be 
+        same features, then the dataframe could be automatically done or something else could be
         done i don't know...
         """
         rows = []

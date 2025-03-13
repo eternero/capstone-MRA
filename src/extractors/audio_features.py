@@ -4,7 +4,7 @@ stick to essentia it might be best to join this with classes/essentia_models.py
 """
 
 from functools import lru_cache
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 import librosa
 import numpy as np
 import essentia.standard as es
@@ -30,9 +30,42 @@ class FeatureExtractor:
     This class is in charge of providing methods which facilitate the creation of a data pipeline
     for the audio features that we will be extracting in this project.
     """
+
     @staticmethod
-    def retrieve_all_model_features(track      : "Track",
-                                    model_dict : dict[EssentiaModel, list[EssentiaModel]]) -> "Track":
+    def retrieve_algorithm_features(track : "Track", algorithm_list : list[Callable]) -> "Track":
+        for algorithm in algorithm_list:
+            algorithm(track)
+        return track
+
+    @staticmethod
+    def retrieve_model_features(track : "Track", essentia_embeddings : EssentiaModel,
+                                essentia_inference_model_list : list[EssentiaModel]):
+
+        # Load and Cache the Embedding Model
+        embeddings_tf = load_essentia_model(essentia_embeddings.algorithm,
+                                            essentia_embeddings.graph_filename,
+                                            essentia_embeddings.output)
+
+        # Compute the embeddings
+        track_embeddings = embeddings_tf(track.track_mono)
+
+        for essentia_inf_model in essentia_inference_model_list:
+            inference_tf = load_essentia_model(essentia_inf_model.algorithm,
+                                               essentia_inf_model.graph_filename,
+                                               essentia_inf_model.output)
+
+            # Gather Inference Predictions and save it as a feature.
+            predictions  = inference_tf(track_embeddings)
+            feature_name = [essentia_inf_model.classifiers[0], essentia_inf_model.model_family]
+            feature_name = '_'.join(feature_name)
+            track.features[feature_name] = np.mean(predictions, axis=0)[0]
+
+        return track
+
+
+    @staticmethod
+    def retrieve_all_essentia_features(track             : "Track",
+                                    essentia_obj_dict : dict[EssentiaModel, list[EssentiaModel]]) -> "Track":
 
         # Load the track mono so that we can process it
         track.track_mono = MonoLoader(filename        = track.track_path,
@@ -40,29 +73,19 @@ class FeatureExtractor:
                                       resampleQuality = 0)()   # all our tracks are 44kHz
 
         # Loop through the embedding -> model list in dictionary
-        for embedding_model, inf_model_list in model_dict.items():
+        for essentia_obj_type, essentia_obj_list in essentia_obj_dict.items():
 
-            # Load and Cache the Embedding Model
-            embeddings_tf = load_essentia_model(embedding_model.algorithm,
-                                                embedding_model.graph_filename,
-                                                embedding_model.output)
+            # Check Essentia Object Type. It can be either an Algorithm or Embedding
+            if essentia_obj_type == "algorithms":
+                track = FeatureExtractor.retrieve_algorithm_features(track, essentia_obj_list)
 
-            # Compute the embeddings
-            track_embeddings = embeddings_tf(track.track_mono)
-
-            # Load each inference model in the list.
-            for inf_model in inf_model_list:
-                inference_tf = load_essentia_model(inf_model.algorithm,
-                                                  inf_model.graph_filename,
-                                                  inf_model.output)
-
-                # Gather Inference Predictions and save it as a feature.
-                predictions  = inference_tf(track_embeddings)
-                feature_name = [inf_model.classifiers[0], inf_model.model_family]
-                feature_name = '_'.join(feature_name)
-                track.features[feature_name] = np.mean(predictions, axis=0)[0]
+            else:
+                track = FeatureExtractor.retrieve_model_features(track,
+                                                                 essentia_embeddings=essentia_obj_type,
+                                                                 essentia_inference_model_list=essentia_obj_list)
 
         return track
+
 
 
     @staticmethod
