@@ -12,7 +12,6 @@ that has to be provided is a `Track` and the method takes care of the rest.
 import numpy as np
 import essentia.standard as es
 from src.classes.track import Track
-from essentia.standard import MonoLoader
 from collections import Counter
 
 class EssentiaAlgo:
@@ -24,7 +23,7 @@ class EssentiaAlgo:
         NOTE : This can also get beats and other necessary stuff
         """
         rhythm_extractor = es.RhythmExtractor2013(method="multifeature")
-        bpm, _, _, _, _       = rhythm_extractor(track.track_mono)
+        bpm, _, _, _, _  = rhythm_extractor(track.track_mono_44)
 
         # Update the features for our track and return (bpm, beats)
         track.features['bpm'] = bpm
@@ -33,13 +32,13 @@ class EssentiaAlgo:
     @staticmethod
     def get_energy(track : Track):
         """Get the track energy using the Essentia Energy Algorithm."""
-        track.features['energy'] = es.Energy()(track.track_mono)
+        track.features['energy'] = es.Energy()(track.track_mono_44)
 
 
     @staticmethod
     def get_intensity(track : Track):
         """NOTE : Quality: outdated (non-reliable, poor accuracy). Yea, it fucking sucks"""
-        track.features['intensity'] = es.Intensity()(track.track_mono)
+        track.features['intensity'] = es.Intensity()(track.track_mono_44)
 
 
     @staticmethod
@@ -59,8 +58,8 @@ class EssentiaAlgo:
         Oh well.
         """
         # Acquire the Loudness and Loudness Band Ratio
-        _, beats, _, _, _                  = es.RhythmExtractor2013()(track.track_mono)
-        beat_loudness, loudness_band_ratio = es.BeatsLoudness(beats = beats)(track.track_mono)
+        _, beats, _, _, _                  = es.RhythmExtractor2013()(track.track_mono_44)
+        beat_loudness, loudness_band_ratio = es.BeatsLoudness(beats = beats)(track.track_mono_44)
 
         # Acauire the beatogram and save the time signature.
         beatogram                          = es.Beatogram()(beat_loudness, loudness_band_ratio)
@@ -84,7 +83,7 @@ class EssentiaAlgo:
         window         = es.Windowing(type = 'hann')
         spectrum       = es.Spectrum()
 
-        track_mono     = track.track_mono
+        track_mono     = track.track_mono_44
         mfcc_band_list = []
         frame_size     = 1024   # This is the common frame size, so I'm using it!
 
@@ -128,7 +127,7 @@ class EssentiaAlgo:
         chord_detect   = es.ChordsDetection()
         pitch_salience = es.PitchSalience()
 
-        track_mono     = track.track_mono
+        track_mono     = track.track_mono_44
         frame_size     = 1024
 
         # Apparently I'm supposed to gather these...

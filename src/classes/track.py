@@ -44,12 +44,14 @@ class Track:
 
     TODO : Missing implementation of SpotifyAPI here, work on it.
     """
-    def __init__(self, track_path : str, track_mono : MonoLoader):
-        self.track_path = track_path
-        self.track_mono = track_mono
+    def __init__(self, track_path : str):
+        self.track_path    = track_path
+        self.track_mono_16 = None
+        self.track_mono_44 = None
 
-        self.features: Dict[str, Any] = {}
-        self.metadata: Dict[str, Any] = {}
+
+        self.features      : Dict[str, Any] = {}
+        self.metadata      : Dict[str, Any] = {}
 
     def update_features(self, new_features: Dict[str, Any]) -> None:
         """_summary_
@@ -66,6 +68,13 @@ class Track:
             new_metadata (Dict[str, Any]): _description_
         """
         self.metadata = new_metadata
+
+    def get_track_mono(self, sample_rate : int) -> np.array:
+        """Wrapper for the MonoLoader method."""
+        return MonoLoader(filename        = self.track_path,
+                          sampleRate      = sample_rate,
+                          resampleQuality = 0)()
+
 
 
 class TrackPipeline:
@@ -96,8 +105,8 @@ class TrackPipeline:
             track_path   : The path to the track for which we will be acquiring its features.
             access_token : The access token needed to make the Spotify API requests.
         """
-        # Initialize a `Track` object with a dummy track_mono since loading isn't needed yet.
-        track    = Track(track_path=track_path, track_mono= np.array([]))
+        # Initialize a `Track` object.
+        track    = Track(track_path=track_path)
         metadata = self.metadata_extractor.extract(track.track_path)
         track.update_metadata(metadata)
 
@@ -107,7 +116,6 @@ class TrackPipeline:
         track_album      = track.metadata['ALBUM']
         track_artist     = track.metadata['ARTIST']
         album_artist     = track.metadata['ALBUM_ARTIST']
-
         # If possible, overwrite the track artist w/ album artist to avoid issues in songs with fts
         track_artist     = album_artist if album_artist else track_artist
 

@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Callable
 import librosa
 import numpy as np
 import essentia.standard as es
-from essentia.standard import MonoLoader
 from src.classes.essentia_models import EssentiaModel
 
 # Import Track only for type-checking; this import will not be executed at runtime.
@@ -37,6 +36,7 @@ class FeatureExtractor:
             algorithm(track)
         return track
 
+
     @staticmethod
     def retrieve_model_features(track : "Track", essentia_embeddings : EssentiaModel,
                                 essentia_inference_model_list : list[EssentiaModel]):
@@ -47,7 +47,7 @@ class FeatureExtractor:
                                             essentia_embeddings.output)
 
         # Compute the embeddings
-        track_embeddings = embeddings_tf(track.track_mono)
+        track_embeddings = embeddings_tf(track.track_mono_16)
 
         for essentia_inf_model in essentia_inference_model_list:
             inference_tf = load_essentia_model(essentia_inf_model.algorithm,
@@ -67,10 +67,9 @@ class FeatureExtractor:
     def retrieve_all_essentia_features(track             : "Track",
                                     essentia_obj_dict : dict[EssentiaModel, list[EssentiaModel]]) -> "Track":
 
-        # Load the track mono so that we can process it
-        track.track_mono = MonoLoader(filename        = track.track_path,
-                                      sampleRate      = 44100, # Hardcoded for now, since
-                                      resampleQuality = 0)()   # all our tracks are 44kHz
+        # Load the track monos so that we can process the track.
+        track.track_mono_16 = track.get_track_mono(sample_rate = 16000)
+        track.track_mono_44 = track.get_track_mono(sample_rate = 44100)
 
         # Loop through the embedding -> model list in dictionary
         for essentia_obj_type, essentia_obj_list in essentia_obj_dict.items():
@@ -79,6 +78,7 @@ class FeatureExtractor:
             if essentia_obj_type == "algorithms":
                 track = FeatureExtractor.retrieve_algorithm_features(track, essentia_obj_list)
 
+            # If it not an algorithm, then it must be a model!
             else:
                 track = FeatureExtractor.retrieve_model_features(track,
                                                                  essentia_embeddings=essentia_obj_type,
@@ -87,13 +87,12 @@ class FeatureExtractor:
         return track
 
 
-
     @staticmethod
     def retrieve_bpm_librosa(track : "Track"):
         """
         ...
         """
-        tempo, _ = librosa.beat.beat_track(y=track.track_mono, sr = 44100)
+        tempo, _ = librosa.beat.beat_track(y=track.track_mono_44, sr = 44100)
         print(track.track_path)
         print(f"Detected BPM: {tempo}")
         print("-"*100)
