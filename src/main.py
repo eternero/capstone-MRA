@@ -43,14 +43,13 @@ if __name__ == '__main__':
                                                 ]
                             }
 
+    # NOTE : Removed intensity and time signature given that they're not very accurate.
     essentia_algos_dict  = {
                            "algorithms" : [
                                           EssentiaAlgo.el_monstruo,
                                           EssentiaAlgo.get_bpm_re2013,
                                           EssentiaAlgo.get_energy,
-                                          EssentiaAlgo.get_time_signature,
-                                          EssentiaAlgo.get_loudness_ebu_r128,
-                                          EssentiaAlgo.get_intensity
+                                          EssentiaAlgo.get_loudness_ebu_r128
                                           ],
                             discogs_effnet_emb: [
                                                 # These are the ML Models
@@ -71,4 +70,4 @@ if __name__ == '__main__':
 
     track_list = track_pipeline.run_pipeline(essentia_algos_dict)
     track_df   = track_pipeline.get_track_dataframe()
-    track_df.to_csv('metadata5.csv', index=False)
+    track_df.to_csv('metadata_clean.csv', index=False)

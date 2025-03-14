@@ -36,8 +36,8 @@ class SpotifyAPI:
         Args:
             client_id     : The Client ID generated after registering your application.
             client_secret : The Client SECRET generated after registering your application.
-            scope         : A space-separated list of scopes. If no scopes are specified, 
-                            authorization will be granted only to access publicly available 
+            scope         : A space-separated list of scopes. If no scopes are specified,
+                            authorization will be granted only to access publicly available
                             information: that is, only information normally visible in the Spotify
                             desktop, web, and mobile players.
 
@@ -172,12 +172,10 @@ class SpotifyAPI:
             # Extract the track information from the response
             track_item = data['tracks']['items'][0]
             spotify_features =  {
-                                  "spotify_id" : track_item['id'],
                                   "uri"        : track_item['uri'],
                                   "sp_name"    : track_item['name'],
                                   "popularity" : track_item['popularity'],
                                   "album_id"   : track_item['album']['id'],
-                                  "album_type" : track_item['album']['album_type'],
                                 }
             return spotify_features
 

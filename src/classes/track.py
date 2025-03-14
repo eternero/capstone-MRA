@@ -183,7 +183,7 @@ class TrackPipeline:
                              executor_type="thread"
                         )
 
-        self.track_list = [track for track in result_tracks if track is not None][:100]
+        self.track_list = [track for track in result_tracks if track is not None]
 
         # -----------------------------------------------------------------------------------------
         # Step 2 : Essentia Models Extraction

@@ -2,6 +2,7 @@
 ...
 """
 import os
+import re
 from typing import Any, Dict, Optional
 from mutagen.id3 import ID3
 from mutagen.mp3 import MP3
@@ -11,7 +12,7 @@ from mutagen.flac import FLAC
 class MetadataExtractor:
     """
     Extracts metadata from audio files (FLAC and MP3) using Mutagen.
-    
+
     This version is stateless. The `extract` method takes the file path as input,
     making it clear that extraction is solely a function of the input file.
     """
@@ -21,16 +22,28 @@ class MetadataExtractor:
         """
         Processes a metadata field that may be a list or a single value. Real shit this doesn't even
         fucking work because I get multiple artists all the fucking time because of commmas and fts.
-        
+
+        NOTE : Added shit to deal with feats and parentheses. Not commas yet, might be dangerous!
+
         Args:
             field: The metadata field value.
-        
+
         Returns:
             If the field is a list, returns its first element; otherwise, returns the field as is.
         """
-        if isinstance(field, list):
-            return field[0]
+        if not field:
+            return None
+
+        field = field[0] if isinstance(field, list) else field
+        field = re.sub(r'\(.*?\)', '', field)
+
+        # Remove the word "feat" (case-insensitive) and its common variations (e.g., "ft.")
+        field = re.sub(r'\b(?:feat|ft)\b.*', '', field, flags=re.IGNORECASE)
+
+        # Replace multiple whitespace with a single space and trim leading/trailing spaces
+        field = re.sub(r'\s+', ' ', field).strip()
         return field
+
 
     @staticmethod
     def extract(track_path: str) -> Optional[Dict[str, Any]]:
