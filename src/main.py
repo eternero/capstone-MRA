@@ -1,14 +1,22 @@
-"""
-...
-"""
+"""..."""
 import os
 from src.classes.track import TrackPipeline
-from src.classes.essentia_models import (discogs_effnet_emb,
-                                         timbre_effnet_model,
-                                         acoustic_effnet_model,
+from src.classes.essentia_models import (# Models
                                          danceability_effnet_model,
-                                         voice_instrumental_effnet_model
-)
+                                         mood_aggressive_effnet_model,
+                                         mood_happy_effnet_model,
+                                         mood_party_effnet_model,
+                                         mood_relaxed_effnet_model,
+                                         mood_sad_effnet_model,
+                                         mood_acoustic_effnet_model,
+                                         mood_electronic_effnet_model,
+                                         voice_instrumental_effnet_model,
+                                         tonal_atonal_effnet_model,
+                                         timbre_effnet_model,
+                                         nsynth_timbre_effnet_model,
+                                         # Embeddings
+                                         discogs_effnet_emb
+                                        )
 from src.classes.essentia_algos import EssentiaAlgo
 
 if __name__ == '__main__':
@@ -20,10 +28,18 @@ if __name__ == '__main__':
                             # This is the embedding Model
                             discogs_effnet_emb: [
                                                 # These are the ML Models
-                                                timbre_effnet_model,
-                                                acoustic_effnet_model,
                                                 danceability_effnet_model,
-                                                voice_instrumental_effnet_model
+                                                mood_aggressive_effnet_model,
+                                                mood_happy_effnet_model,
+                                                mood_party_effnet_model,
+                                                mood_relaxed_effnet_model,
+                                                mood_sad_effnet_model,
+                                                mood_acoustic_effnet_model,
+                                                mood_electronic_effnet_model,
+                                                voice_instrumental_effnet_model,
+                                                tonal_atonal_effnet_model,
+                                                timbre_effnet_model,
+                                                nsynth_timbre_effnet_model
                                                 ]
                             }
 
@@ -38,13 +54,21 @@ if __name__ == '__main__':
                                           ],
                             discogs_effnet_emb: [
                                                 # These are the ML Models
-                                                timbre_effnet_model,
-                                                acoustic_effnet_model,
                                                 danceability_effnet_model,
-                                                voice_instrumental_effnet_model
+                                                mood_aggressive_effnet_model,
+                                                mood_happy_effnet_model,
+                                                mood_party_effnet_model,
+                                                mood_relaxed_effnet_model,
+                                                mood_sad_effnet_model,
+                                                mood_acoustic_effnet_model,
+                                                mood_electronic_effnet_model,
+                                                voice_instrumental_effnet_model,
+                                                tonal_atonal_effnet_model,
+                                                timbre_effnet_model,
+                                                nsynth_timbre_effnet_model
                                                 ]
                            }
 
     track_list = track_pipeline.run_pipeline(essentia_algos_dict)
     track_df   = track_pipeline.get_track_dataframe()
-    track_df.to_csv('metadata3.csv', index=False)
+    track_df.to_csv('metadata5.csv', index=False)

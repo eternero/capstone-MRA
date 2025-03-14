@@ -83,14 +83,6 @@ msd_musicnn_emb = EssentiaModel(
 # ------------------------------------------------------------------------------
 # Effnet Models
 # ------------------------------------------------------------------------------
-timbre_effnet_model             = EssentiaModel(
-    graph_filename = 'src/models/timbre-discogs-effnet-1.pb',
-    output         = 'model/Softmax',
-    algorithm      = 'TensorflowPredict2D',
-    classifiers    = ['bright', 'dark'],
-    model_family   = "effnet"
-)
-
 danceability_effnet_model      = EssentiaModel(
     graph_filename = 'src/models/danceability-discogs-effnet-1.pb',
     output         = 'model/Softmax',
@@ -99,11 +91,67 @@ danceability_effnet_model      = EssentiaModel(
     model_family   = "effnet"
 )
 
-acoustic_effnet_model           = EssentiaModel(
+mood_aggressive_effnet_model    = EssentiaModel(
+    graph_filename = 'src/models/mood_aggressive-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['aggressive', 'not_aggressive'],
+    model_family   = "effnet"
+)
+
+mood_happy_effnet_model         = EssentiaModel(
+    graph_filename = 'src/models/mood_happy-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['happy', 'non_happy'],
+    model_family   = "effnet"
+)
+
+mood_party_effnet_model         = EssentiaModel(
+    graph_filename = 'src/models/mood_party-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['non_party', 'party'],    # Metadata has it like this flipped, idk.
+    model_family   = "effnet"
+)
+
+mood_relaxed_effnet_model       = EssentiaModel(
+    graph_filename = 'src/models/mood_relaxed-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['non_relaxed', 'relaxed'],    # Also flipped man idk.
+    model_family   = "effnet"
+)
+
+mood_sad_effnet_model           = EssentiaModel(
+    graph_filename = 'src/models/mood_sad-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['non_sad', 'sad'],
+    model_family   = "effnet"
+)
+
+mood_acoustic_effnet_model      = EssentiaModel(    # NOTE : TAKES A MELSPECTOGRAM AS EMBEDDING INPUT. FUCK
     graph_filename = 'src/models/mood_acoustic-discogs-effnet-1.pb',
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['acoustic', 'non_acoustic'],
+    model_family   = "effnet"
+)
+
+mood_electronic_effnet_model    = EssentiaModel(
+    graph_filename = 'src/models/mood_electronic-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['electronic', 'non_electronic'],
+    model_family   = "effnet"
+)
+
+voice_instrumental_effnet_model = EssentiaModel(
+    graph_filename = 'src/models/voice_instrumental-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['instrumental', 'voice'],
     model_family   = "effnet"
 )
 
@@ -115,12 +163,20 @@ tonal_atonal_effnet_model       = EssentiaModel(
     model_family   = "effnet"
 )
 
-voice_instrumental_effnet_model = EssentiaModel(
-    graph_filename = 'src/models/voice_instrumental-discogs-effnet-1.pb',
+timbre_effnet_model             = EssentiaModel(
+    graph_filename = 'src/models/timbre-discogs-effnet-1.pb',
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
-    classifiers    = ['instrumental', 'voice'],
+    classifiers    = ['bright', 'dark'],
     model_family   = "effnet"
+)
+
+nsynth_timbre_effnet_model      = EssentiaModel(
+    graph_filename = 'src/models/nsynth_bright_dark-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['bright', 'dark'],
+    model_family   = "nsynth_effnet"
 )
 
 # ------------------------------------------------------------------------------
@@ -164,7 +220,7 @@ mood_aggressive_musicnn_model = EssentiaModel(
 essentia_models_dict =  {
                         discogs_effnet_emb: [
                                               timbre_effnet_model,
-                                              acoustic_effnet_model,
+                                              mood_acoustic_effnet_model,
                                               danceability_effnet_model,
                                               voice_instrumental_effnet_model,
 
