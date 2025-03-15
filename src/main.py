@@ -1,31 +1,73 @@
-"""
-...
-"""
-
-from pprint import pprint
-from src.classes.track import TrackPipline
-from src.classes.essentia_models import essentia_models_dict
+"""..."""
+import os
+from src.classes.track import TrackPipeline
+from src.classes.essentia_models import (# Models
+                                         danceability_effnet_model,
+                                         mood_aggressive_effnet_model,
+                                         mood_happy_effnet_model,
+                                         mood_party_effnet_model,
+                                         mood_relaxed_effnet_model,
+                                         mood_sad_effnet_model,
+                                         mood_acoustic_effnet_model,
+                                         mood_electronic_effnet_model,
+                                         voice_instrumental_effnet_model,
+                                         tonal_atonal_effnet_model,
+                                         timbre_effnet_model,
+                                         nsynth_timbre_effnet_model,
+                                         # Embeddings
+                                         discogs_effnet_emb
+                                        )
+from src.classes.essentia_algos import EssentiaAlgo
 
 if __name__ == '__main__':
-    AUDIO_PATH = "src/audio/dataset_flac"
+    print(os.cpu_count())
+    AUDIO_PATH = "src/audio/testing_dataset_flac"
+    track_pipeline = TrackPipeline(AUDIO_PATH)
 
-    track_pipeline = TrackPipline(AUDIO_PATH)
+    essentia_models_dict =  {
+                            # This is the embedding Model
+                            discogs_effnet_emb: [
+                                                # These are the ML Models
+                                                danceability_effnet_model,
+                                                mood_aggressive_effnet_model,
+                                                mood_happy_effnet_model,
+                                                mood_party_effnet_model,
+                                                mood_relaxed_effnet_model,
+                                                mood_sad_effnet_model,
+                                                mood_acoustic_effnet_model,
+                                                mood_electronic_effnet_model,
+                                                voice_instrumental_effnet_model,
+                                                tonal_atonal_effnet_model,
+                                                timbre_effnet_model,
+                                                nsynth_timbre_effnet_model
+                                                ]
+                            }
 
-    print("Loading tracks in parallel...")
-    track_pipeline.load_tracks(num_processes=15)  # Adjust number of processes as necessary.
-                                                 # you could also just leave it at default.
+    # NOTE : Removed intensity and time signature given that they're not very accurate.
+    essentia_algos_dict  = {
+                           "algorithms" : [
+                                          EssentiaAlgo.el_monstruo,
+                                          EssentiaAlgo.get_bpm_re2013,
+                                          EssentiaAlgo.get_energy,
+                                          EssentiaAlgo.get_loudness_ebu_r128
+                                          ],
+                            discogs_effnet_emb: [
+                                                # These are the ML Models
+                                                danceability_effnet_model,
+                                                mood_aggressive_effnet_model,
+                                                mood_happy_effnet_model,
+                                                mood_party_effnet_model,
+                                                mood_relaxed_effnet_model,
+                                                mood_sad_effnet_model,
+                                                mood_acoustic_effnet_model,
+                                                mood_electronic_effnet_model,
+                                                voice_instrumental_effnet_model,
+                                                tonal_atonal_effnet_model,
+                                                timbre_effnet_model,
+                                                nsynth_timbre_effnet_model
+                                                ]
+                           }
 
-    print(f"Loaded {len(track_pipeline.track_list)} tracks.")
-
-
-    print("Reducing number of tracks to 20")
-    track_pipeline.track_list = track_pipeline.track_list[:20]
-
-    # After running this, tracks should now have features and metadata
-    track_pipeline.run_pipeline(essentia_models_dict)
-    for track in track_pipeline.track_list:
-        pprint(track.metadata)
-
-    # TODO : This was surprisingly slow and some models seemed to be loaded twice, which should
-    #        never happen. Analyze and figure out why this is happening. A good place to start
-    #        is by running a couple of tracks manually first. Create an `/examples` dir for this.
+    track_list = track_pipeline.run_pipeline(essentia_algos_dict)
+    track_df   = track_pipeline.get_track_dataframe()
+    track_df.to_csv('metadata_clean.csv', index=False)

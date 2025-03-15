@@ -1,13 +1,6 @@
 """Classes and constants for representing Essentia ML Models and Embeddings."""
 
 from typing import Any
-from essentia.standard import (
-    TensorflowPredictMusiCNN,
-    TensorflowPredict2D,
-    TensorflowPredictEffnetDiscogs,
-)
-from concurrent.futures import ProcessPoolExecutor, as_completed
-
 
 class EssentiaModel:
     """Represents either an Essentia Model or an Embedding.
@@ -28,9 +21,11 @@ class EssentiaModel:
     def __init__(
         self,
         graph_filename: str,
-        output: str,
-        algorithm: Any,
-        embeddings: 'EssentiaModel' = None,
+        output        : str,
+        algorithm     : str,
+        model_family  : str             = None,
+        classifiers   : list[str]       = None,
+        embeddings    : 'EssentiaModel' = None,
     ) -> None:
         """Initializes an EssentiaModel instance.
 
@@ -44,10 +39,13 @@ class EssentiaModel:
         self.graph_filename = graph_filename
         self.output         = output
         self.algorithm      = algorithm
+        self.model_family   = model_family
+
         self.embeddings     = embeddings
+        self.classifiers    = classifiers
         self.model          = None
 
-    def get_model(self) -> Any:
+    def get_model(self) -> Any: # Not to be used atm.
         """Returns the instantiated model or embedding algorithm.
 
         This method calls the Essentia TensorFlow wrapper (e.g., TensorflowPredict2D) and returns
@@ -64,26 +62,13 @@ class EssentiaModel:
 
         return self.model
 
-    def get_graph_filename(self) -> str:
-        """Returns the graph filename."""
-        return self.graph_filename
-
-    def get_output(self) -> str:
-        """Returns the output node name."""
-        return self.output
-
-    def get_embeddings(self) -> 'EssentiaModel':
-        """Returns the embeddings EssentiaModel if it exists."""
-        return self.embeddings
-
-
 # ------------------------------------------------------------------------------
 # Discog Embeddings
 # ------------------------------------------------------------------------------
 discogs_effnet_emb = EssentiaModel(
     graph_filename='src/embeddings/discogs-effnet-bs64-1.pb',
     output='PartitionedCall:1',
-    algorithm=TensorflowPredictEffnetDiscogs,
+    algorithm='TensorflowPredictEffnetDiscogs',
 )
 
 # ------------------------------------------------------------------------------
@@ -92,49 +77,141 @@ discogs_effnet_emb = EssentiaModel(
 msd_musicnn_emb = EssentiaModel(
     graph_filename='src/embeddings/msd-musicnn-1.pb',
     output='model/dense/BiasAdd',
-    algorithm=TensorflowPredictMusiCNN,
+    algorithm='TensorflowPredictMusiCNN',
 )
 
 # ------------------------------------------------------------------------------
 # Effnet Models
 # ------------------------------------------------------------------------------
-timbre_effnet_model = EssentiaModel(
-    graph_filename='src/models/timbre-discogs-effnet-1.pb',
-    output='model/Softmax',
-    algorithm=TensorflowPredict2D,
+danceability_effnet_model      = EssentiaModel(
+    graph_filename = 'src/models/danceability-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['danceable', 'not_danceable'],
+    model_family   = "effnet"
 )
 
-danceability_effnet_model = EssentiaModel(
-    graph_filename='src/models/danceability-discogs-effnet-1.pb',
-    output='model/Softmax',
-    algorithm=TensorflowPredict2D,
+mood_aggressive_effnet_model    = EssentiaModel(
+    graph_filename = 'src/models/mood_aggressive-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['aggressive', 'not_aggressive'],
+    model_family   = "effnet"
+)
+
+mood_happy_effnet_model         = EssentiaModel(
+    graph_filename = 'src/models/mood_happy-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['happy', 'non_happy'],
+    model_family   = "effnet"
+)
+
+mood_party_effnet_model         = EssentiaModel(
+    graph_filename = 'src/models/mood_party-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['non_party', 'party'],    # Metadata has it like this flipped, idk.
+    model_family   = "effnet"
+)
+
+mood_relaxed_effnet_model       = EssentiaModel(
+    graph_filename = 'src/models/mood_relaxed-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['non_relaxed', 'relaxed'],    # Also flipped man idk.
+    model_family   = "effnet"
+)
+
+mood_sad_effnet_model           = EssentiaModel(
+    graph_filename = 'src/models/mood_sad-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['non_sad', 'sad'],
+    model_family   = "effnet"
+)
+
+mood_acoustic_effnet_model      = EssentiaModel(    # NOTE : TAKES A MELSPECTOGRAM AS EMBEDDING INPUT. FUCK
+    graph_filename = 'src/models/mood_acoustic-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['acoustic', 'non_acoustic'],
+    model_family   = "effnet"
+)
+
+mood_electronic_effnet_model    = EssentiaModel(
+    graph_filename = 'src/models/mood_electronic-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['electronic', 'non_electronic'],
+    model_family   = "effnet"
+)
+
+voice_instrumental_effnet_model = EssentiaModel(
+    graph_filename = 'src/models/voice_instrumental-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['instrumental', 'voice'],
+    model_family   = "effnet"
+)
+
+tonal_atonal_effnet_model       = EssentiaModel(
+    graph_filename = 'src/models/tonal_atonal-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['tonal', 'atonal'],
+    model_family   = "effnet"
+)
+
+timbre_effnet_model             = EssentiaModel(
+    graph_filename = 'src/models/timbre-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['bright', 'dark'],
+    model_family   = "effnet"
+)
+
+nsynth_timbre_effnet_model      = EssentiaModel(
+    graph_filename = 'src/models/nsynth_bright_dark-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['bright', 'dark'],
+    model_family   = "nsynth_effnet"
 )
 
 # ------------------------------------------------------------------------------
 # MusiCNN Models
 # ------------------------------------------------------------------------------
 danceability_musicnn_model = EssentiaModel(
-    graph_filename='src/models/danceability-msd-musicnn-1.pb',
-    output='model/Softmax',
-    algorithm=TensorflowPredict2D,
+    graph_filename = 'src/models/danceability-msd-musicnn-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['danceable', 'not_danceable'],
+    model_family   = "MusiCNN"
 )
 
 voice_instrumental_musicnn_model = EssentiaModel(
-    graph_filename='src/models/voice_instrumental-msd-musicnn-1.pb',
-    output='model/Softmax',
-    algorithm=TensorflowPredict2D,
+    graph_filename = 'src/models/voice_instrumental-msd-musicnn-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['instrumental', 'voice'],
+    model_family   = "MusiCNN"
 )
 
 mood_happy_musicnn_model = EssentiaModel(
-    graph_filename='src/models/mood_happy-msd-musicnn-1.pb',
-    output='model/Softmax',
-    algorithm=TensorflowPredict2D,
+    graph_filename = 'src/models/mood_happy-msd-musicnn-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['happy', 'non_happy'],
+    model_family   = "MusiCNN"
 )
 
 mood_aggressive_musicnn_model = EssentiaModel(
     graph_filename='src/models/mood_aggressive-msd-musicnn-1.pb',
-    output='model/Softmax',
-    algorithm=TensorflowPredict2D,
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['aggressive', 'non_aggressive'],
+    model_family   = "MusiCNN"
 )
 
 # ------------------------------------------------------------------------------
@@ -143,7 +220,10 @@ mood_aggressive_musicnn_model = EssentiaModel(
 essentia_models_dict =  {
                         discogs_effnet_emb: [
                                               timbre_effnet_model,
-                                              danceability_effnet_model
+                                              mood_acoustic_effnet_model,
+                                              danceability_effnet_model,
+                                              voice_instrumental_effnet_model,
+
                                             ],
                         msd_musicnn_emb:    [
                                               danceability_effnet_model,
