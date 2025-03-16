@@ -5,11 +5,13 @@ import random
 import asyncio
 import logging
 import nodriver
+import pandas as pd
 from nodriver import Tab, Browser
+from src.utils.clean_csv import get_missing_albums
 
 # Configuring the logging
 logging.basicConfig(
-    level=logging.INFO, 
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     filename='scraping.log',
     filemode='a'
@@ -65,16 +67,16 @@ async def random_interactions(page: Tab):
     """
 
     # Scroll three times with random directions and distances
-    for _ in range(3):
+    for _ in range(random.randint(1,5)):
         choice     = random.choice([True, False])
-        scroll_val = round(random.uniform(200, 600), 3)
+        scroll_val = round(random.uniform(50, 200), 3)
 
         # Scroll up or down depending on the random values previously acquired.
         scroll     = page.scroll_down if choice else page.scroll_up
         await scroll(scroll_val)
 
         # Introduce a short delay between scrolls to mimic reading time
-        await asyncio.sleep(random.uniform(1, 3))
+        await asyncio.sleep(random.uniform(0.5, 2))
 
 
 async def retrieve_rym_data(browser: Browser, artist_name: str, album_name: str) -> dict[str]:
@@ -130,7 +132,7 @@ async def retrieve_rym_data(browser: Browser, artist_name: str, album_name: str)
     return results
 
 
-async def retrieve_all_albums_data(album_dict: dict[str, str]) -> list[dict[str,str]]:
+async def retrieve_all_albums_data(album_list: list[str], recount: bool = False) -> list[dict[str]]:
     """
     ...
 
@@ -143,17 +145,19 @@ async def retrieve_all_albums_data(album_dict: dict[str, str]) -> list[dict[str,
     results = []
     browser = await nodriver.start()
 
-   # Load previous progress, if avaylable, if this fuckers ban us
+   # Load previous progress, if available.
     start_index, album_cache = await load_progress()
-    album_request_counter = 0
-
-    album_items = list(album_dict.items())
-    total_albums = len(album_items)
+    album_request_counter    = 0
+    total_albums             = len(album_list)
+    start_index              = 0 if recount else start_index
 
     for i in range(start_index, total_albums):
-        artist_name, album_name = album_items[i]
-        album_key               = f"{artist_name}/{album_name}"
-        album_request_counter   += 1
+        album_attributes      = album_list[i]
+        artist_name           = album_attributes['query_artist']
+        album_name            = album_attributes['query_album']
+
+        album_key             = f"{artist_name}/{album_name}"
+        album_request_counter += 1
 
         if album_key in album_cache:
             logging.info("Using cached data for album: %s", album_key)
@@ -162,7 +166,7 @@ async def retrieve_all_albums_data(album_dict: dict[str, str]) -> list[dict[str,
         else:
             album_data = await retrieve_rym_data(browser, artist_name, album_name)
             if not album_data:  # If no data was retrieved, there must've been failure. Thus, skip.
-                print(f"Could not find data for {artist_name} : {album_name}")
+                logging.warning("Could not find data for %s : %s", artist_name, album_name)
                 continue
 
             album_cache[album_key] = album_data
@@ -175,9 +179,9 @@ async def retrieve_all_albums_data(album_dict: dict[str, str]) -> list[dict[str,
                        })
         await save_progress(i, album_cache)
 
-        # Every 20 requests, take a break of 10-30 seconds.
-        if album_request_counter % 20 == 0:
-            long_break = random.uniform(10, 30)
+        # Every 10 requests, take a break of 20-30 seconds.
+        if album_request_counter % 10 == 0:
+            long_break = random.uniform(20, 30)
             logging.info("Taking a long break for %d seconds after %d request",
                          long_break, album_request_counter)
             await asyncio.sleep(long_break)
@@ -193,15 +197,36 @@ async def retrieve_all_albums_data(album_dict: dict[str, str]) -> list[dict[str,
 
 
 if __name__ == '__main__':
-
-    a_dict = {
-        'bladee': 'red-light',
-        'ecco2k': 'e',
-        'fakeal': 'bum',
-        'burial': 'untrue',
-        'cocteau-twins': 'the-pink-opaque'
-    }
+    csv_path   = '/Users/nico/Desktop/CIIC/CAPSTONE/essentia_demo/grouped_output_750_v2_clean.csv'
+    json_path  = '/Users/nico/Desktop/CIIC/CAPSTONE/essentia_demo/progress.json'
+    track_list = get_missing_albums(csv_path=csv_path, progress_path=json_path)
 
     logging.info("Starting scraping process")
-    nodriver.loop().run_until_complete(retrieve_all_albums_data(a_dict))
+    nodriver.loop().run_until_complete(retrieve_all_albums_data(track_list, recount=True))
     logging.info("Scraping process completed")
+
+
+# NOTE : Also missing albums from artists which were featured twice...
+
+
+"""MISSED :
+Could not find data for aap-rocky : testing
+Could not find data for aphex-twin : selected-ambient-works-8592
+Could not find data for arcángel : feliz-navidad
+Could not find data for asunojokei : island
+Could not find data for at-the-drivein : relationship-of-command
+Could not find data for beyoncé : lemonade
+Could not find data for bizarrap-milo-j : en-dormir-sin-madrid
+Could not find data for björk : post
+Could not find data for camilasin-bandera : 4-latidos-tour-en-vivo
+Could not find data for carlos-vives : corazón-profundo
+Could not find data for cursive : cursives-domestica
+Could not find data for dreamville-and-j-cole : revenge-of-the-dreamers-iii-directors-cut
+Could not find data for eladio-carrión : 3men2-kbrn
+Could not find data for evilgiane : evilslime
+Could not find data for freddie-gibbs : bandana
+Could not find data for harto-falión : im_my_best_friend
+Could not find data for hic : l3ft-4-d3ad
+Could not find data for jai-paul : leak-0413
+Could not find data for jay-wheeler : platonicos
+"""
