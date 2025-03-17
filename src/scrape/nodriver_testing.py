@@ -18,9 +18,76 @@ logging.basicConfig(
     filemode='a'
 )
 
-PROGRESS_FILE = "progress.csv"
+class DataHandler:
+    """This class exists as a helper for the NoDriving class. It will handle all of the saving,
+    cleaning and loading of CSVs. For simplicity, the NoDriving class will inherit from this class
+    so that it can easily use all of the methods defined here.
 
-class NoDriving:
+    Attributes:
+    """
+
+    def __init__(self, dataset_path : str, progress_path : str, failure_path : str):
+        self.dataset_path  = dataset_path
+        self.progress_path = progress_path
+        self.failure_path  = failure_path
+
+
+    def save_progress(self, path : str, album_data : dict[str], headers : list[str]):
+        """
+        This methods adds a new line to a CSV with data from RYM. If the CSV does not yet exist, it
+        will take the task of initializing it with the columns:
+            `artist, album, pri_genre, sec_genre, pri_desc`
+        """
+
+        # Open the file in append mode
+        with open(path, mode = "a", newline = "", encoding = "utf-8") as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames = headers)
+
+            # If the file does not exist or is empty, write the header.
+            if not os.path.exists(path) or os.path.getsize(path) == 0:
+                writer.writeheader()
+
+            # Write the data into file.
+            writer.writerow(album_data)
+
+
+    def load_progress(self) -> pd.DataFrame:
+        """
+        Compares the `album_df` against the data in the .csv located at `progress_path`. It will
+        update the album list to only include those albums whose data has not been retrieved yet.
+
+        If there does not exist any .csv at `progress_path` yet, then it will simply return the
+        entirety of `album_df` unaltered.
+
+        NOTE : Now also checking for the `failure_path`. These are the albums which will have to
+               be manually retrieved or are just of no good.
+        """
+        # Acquire our current DataFrame and then retrieve the progress.
+        album_df           = get_query_columns(self.dataset_path)
+        pairs_to_exclude   = set()
+
+        # Check for progress.
+        if os.path.exists(self.progress_path) and os.path.getsize(self.progress_path) > 0:
+            progress_df    = pd.read_csv(self.progress_path)
+            pairs_to_exclude.update(zip(progress_df["album"], progress_df["artist"]))
+
+        # Check for failures.
+        if os.path.exists(self.failure_path)  and os.path.getsize(self.failure_path) > 0:
+            failure_df     = pd.read_csv(self.failure_path)
+            pairs_to_exclude.update(zip(failure_df["album"], failure_df["artist"]))
+
+        # If any pairs are in either CSV, exclude them from the DataFrame.
+        if pairs_to_exclude:
+            remainder_mask = [
+                               (row["query_album"], row["query_artist"]) not in pairs_to_exclude
+                               for _, row in album_df.iterrows()
+                             ]
+            album_df = album_df[remainder_mask]
+
+        return album_df
+
+
+class NoDriving(DataHandler):
     """Object whose purpose is to scrape data in an undetected manner from websites. For us, our
     target is RateYourMusic (RYM) - from which we will be getting User-Generated Content (UGC) such
     as Primary Genre, Secondary Genre and Album Descriptors.
@@ -42,17 +109,17 @@ class NoDriving:
                         cleaned and normalized - we also compare it to whatever we've gone over in
                         the `progress_path` to avoid repetition. This will be used to iterate over
                         the albums for which we are yet to acquire their data.
-        progress_df   : The DataFrame used to represent our previously acquired data. This is only
-                        briefly used, since its only utility is to allow us to intuitively compare
-                        it with the `album_df` to figure out what albums remain to be retrieved.
     """
 
-    def __init__(self, dataset_path : str, progress_path : str):
-        self.dataset_path  = dataset_path
-        self.progress_path = progress_path
+    def __init__(self, dataset_path : str, progress_path : str, failure_path : str):
+        super().__init__(dataset_path, progress_path, failure_path)
 
         # Define constants.
-        self.attributes    = [
+        self.fail_headers  = [
+                                "artist", "album"
+                             ]
+
+        self.album_headers = [
                                 "artist", "album",
                                 "pri_genres", "sec_genres", "pri_desc"
                              ]
@@ -67,53 +134,8 @@ class NoDriving:
                                 'album', 'ep', 'mixtape', 'comp'
                              ]
 
-        # Initialize our dataframes.
-        progress_exists    = os.path.exists(progress_path) and not os.path.getsize(progress_path) == 0
-        self.progress_df   = (
-                                pd.read_csv(progress_path) if progress_exists
-                                else pd.DataFrame(columns=self.attributes)
-                             )
-
-        self.album_df      = self.get_missing_albums()
-
-
-    def save_progress(self, album_data : dict[str]):
-        """
-        This methods adds a new line to a CSV with data from RYM. If the CSV does not yet exist, it
-        will take the task of initializing it with the columns:
-            `artist, album, pri_genre, sec_genre, pri_desc`
-        """
-
-        # Open the file in append mode
-        with open(self.progress_path, mode = "a", newline = "", encoding = "utf-8") as csv_file:
-            writer = csv.DictWriter(csv_file, fieldnames = self.attributes)
-
-            # If the file does not exist or is empty, write the header.
-            if not os.path.exists(self.progress_path) or os.path.getsize(self.progress_path) == 0:
-                writer.writeheader()
-
-            # Write the data into file.
-            writer.writerow(album_data)
-
-
-    def get_missing_albums(self):
-        """
-        Compares the `album_df` against the data in the .csv located at `progress_path`. It will
-        update the album list to only include those albums whose data has not been retrieved yet.
-
-        If there does not exist any .csv at `progress_path` yet, then it will simply return the
-        entirety of `album_df` unaltered.
-        """
-        album_df            = get_query_columns(self.dataset_path)
-        progress_pairs      = set(zip(self.progress_df["album"], self.progress_df["artist"]))
-
-        # Get the mask which will indicate all of the missing albums
-        remainder_mask      = [
-                                (row["query_album"], row["query_artist"]) not in progress_pairs
-                                for _, row in album_df.iterrows()
-                              ]
-
-        return album_df[remainder_mask]
+        # Initialize our dataframe.
+        self.album_df      = self.load_progress()
 
 
     @staticmethod
@@ -173,7 +195,7 @@ class NoDriving:
             await NoDriving.random_interactions(page)   # Otherwise, randomize interactions while acquiring data.
 
             # Commence gathering the data..
-            try:    # NOTE : Susceptible to CAPTCHA taking longer than 10s.
+            try:
                 for span_name, span_class in self.span_classes.items():
                     element            = await page.select(f"span[class={span_class}]")
                     all_data           = element.text_all
@@ -181,7 +203,6 @@ class NoDriving:
                     logging.info("Successfully retreived data from RYM: %s", span_class)
                     results[span_name] = json.dumps([data.strip().lower()               # Not sure if
                                                      for data in all_data.split(",")])  # this will work...
-
 
             except Exception as e:
                 # If any span fails, we skip this release type altogether.
@@ -206,20 +227,29 @@ class NoDriving:
         browser = await nodriver.start()
 
         for row in self.album_df.itertuples(index=True):
-            artist_name = row.query_artist
-            album_name  = row.query_album
 
-            album_data  = await self.retrieve_rym_data(browser, artist_name, album_name)
-            if not album_data:  # If no data was retrieved, there must've been failure. Thus, skip.
-                logging.warning("Could not find data for %s : %s", artist_name, album_name)
-                continue
+            # Get our basic fields
+            artist_name    = row.query_artist
+            album_name     = row.query_album
 
-            # Save the data we've acquired
+            # These fields determine what data will be saved (failure or progress) and where.
+            save_path      = self.progress_path
+            headers        = self.album_headers
+
+            # Now we're ready to retrieve our data.
             retrieved_data = {"artist" : artist_name, "album" : album_name}
+            album_data     = await self.retrieve_rym_data(browser, artist_name, album_name)
             retrieved_data.update(album_data)
 
-            # Write it to the csv file at `self.progress_path`.
-            self.save_progress(retrieved_data)
+            if not album_data:  # If no data was retrieved, record the album as a failure.
+                save_path  = self.failure_path
+                headers    = self.fail_headers
+                logging.warning("Could not find data for %s : %s", artist_name, album_name)
+
+            # Write the current data to our save_path, whether there was progress or failure.
+            self.save_progress(path       = save_path,
+                               album_data = retrieved_data,
+                               headers    = headers)
 
             # Every 10 requests, take a break of 20-30 seconds.
             if (row.Index + 1) % 10 == 0:
@@ -229,11 +259,17 @@ class NoDriving:
                 await asyncio.sleep(long_break)
 
 
-
 if __name__ == '__main__':
-    CSV_PATH   = '/Users/nico/Desktop/CIIC/CAPSTONE/essentia_demo/grouped_output_750_v2_clean.csv'
-    no_driving = NoDriving(CSV_PATH, PROGRESS_FILE)
+    CSV_PATH      = ''
+    PROGRESS_PATH = ''
+    FAILURE_PATH  = ''
+    no_driving    = NoDriving(CSV_PATH, PROGRESS_PATH, FAILURE_PATH)
 
     logging.info("Starting scraping process")
     nodriver.loop().run_until_complete(no_driving.retrieve_all_albums_data())
     logging.info("Scraping process completed")
+
+"""
+lucki,days-b4-iii,"[""trap"", ""cloud rap""]",,
+maluma juancho
+"""
