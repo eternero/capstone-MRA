@@ -8,7 +8,7 @@ import logging
 import nodriver
 import pandas as pd
 from nodriver import Tab, Browser
-from src.utils.clean_csv import get_query_columns
+from src.utils.clean_csv import load_json, is_missing, process_name
 
 # Configuring the logging
 logging.basicConfig(
@@ -19,17 +19,54 @@ logging.basicConfig(
 )
 
 class DataHandler:
-    """This class exists as a helper for the NoDriving class. It will handle all of the saving,
-    cleaning and loading of CSVs. For simplicity, the NoDriving class will inherit from this class
-    so that it can easily use all of the methods defined here.
+    """
+    This class will be in charge of handling the data that we acquire throughout the retrieval of
+    User Generated Content from RateYourMusic. It's basic functionality includes saving and loading
+    progress into CSVs.
+
+    More extensive functionality includes analyzing saved data to determine any errors. Lastly, it
+    will also be tasked with potentially deleting tracks from albums which don't have good data.
+    For simplicity, this class will be inherited by `NoDriving`.
+
+    NOTE : This method could also be in charged of joining the progress df with the dataset df.
 
     Attributes:
+        dataset_path  : The path to the csv file that contains the albums to be searched for. It
+                        must only have the columns `ARTIST` and `ALBUM`. It does not need to be
+                        cleaned either, this class will take care of doing so.
+        progress_path : The path pointing to the csv file in which we will save the RYM data. If one
+                        does not exist, it will be created.
+        failure_path  : The path pointing to the csv file used to record failures. Failures indicate
+                        that an album was not successfully retrieved from RateYourMusic.
     """
 
     def __init__(self, dataset_path : str, progress_path : str, failure_path : str):
         self.dataset_path  = dataset_path
         self.progress_path = progress_path
         self.failure_path  = failure_path
+
+    def process_dataset(self) -> pd.DataFrame:
+        """Cleans up the `ALBUM` and `ARTIST` columns from a dataset and groups them so that they
+        can then be used to query RateYourMusic for User-Generated Content Retrieval. This method
+        of course assumes that they dataset which is being read at `dataset_path` has the columns:
+            `ALBUM` and `ARTIST`
+
+        Returns
+            grouped_df : The resulting dataframe after cleaning and grouping the dataset.
+        """
+
+        # Clean the artist and album fields.
+        album_df                 = pd.read_csv(self.dataset_path)
+        album_df['clean_album']  = album_df['ALBUM'].apply(process_name)
+        album_df['clean_artist'] = album_df['ARTIST'].apply(process_name)
+
+        # Group by 'clean_artist' and 'clean_album' by dropping duplicates and save it.
+        grouped_df = album_df.drop_duplicates(subset=['clean_artist', 'clean_album'])
+        base, ext  = os.path.splitext(self.dataset_path)
+        filename   = f"{base}_clean{ext}"
+        grouped_df.to_csv(filename, index=False)
+
+        return grouped_df
 
 
     def save_progress(self, path : str, album_data : dict[str], headers : list[str]):
@@ -63,7 +100,7 @@ class DataHandler:
                be manually retrieved or are just of no good.
         """
         # Acquire our current DataFrame and then retrieve the progress.
-        album_df           = get_query_columns(self.dataset_path)
+        album_df           = self.process_dataset()
         pairs_to_exclude   = set()
 
         # Check for progress.
@@ -79,12 +116,40 @@ class DataHandler:
         # If any pairs are in either CSV, exclude them from the DataFrame.
         if pairs_to_exclude:
             remainder_mask = [
-                               (row["query_album"], row["query_artist"]) not in pairs_to_exclude
+                               (row["album"], row["artist"]) not in pairs_to_exclude
                                for _, row in album_df.iterrows()
                              ]
             album_df = album_df[remainder_mask]
 
         return album_df
+
+
+    def analyze_progress(self) -> pd.DataFrame:
+        """
+        Reads and analyzes the progress dataset. This is done with the purpose of finding albums
+        which were unsuccessful in their retrieval of data from RateYourMusic.
+
+        Returns:
+            incomplete_df : The DataFrame which contains the missing pairs of `artist : album`.
+        """
+
+        # Read the CSV file
+        album_df = pd.read_csv(self.progress_path)
+
+        # Convert JSON strings to lists for the target columns.
+        for col in ['pri_genres', 'sec_genres', 'pri_desc']:
+            album_df[col] = album_df[col].apply(load_json)
+
+        # Create a mask for rows missing any of the three fields.
+        missing_mask      = (
+            album_df['pri_genres'].apply(is_missing) |
+            album_df['sec_genres'].apply(is_missing) |
+            album_df['pri_desc'].apply(is_missing)
+        )
+
+        # Filter DataFrame to keep only artist and album for rows with missing fields.
+        incomplete_df     = album_df.loc[missing_mask, ['artist', 'album']]
+        return incomplete_df
 
 
 class NoDriving(DataHandler):
@@ -268,8 +333,3 @@ if __name__ == '__main__':
     logging.info("Starting scraping process")
     nodriver.loop().run_until_complete(no_driving.retrieve_all_albums_data())
     logging.info("Scraping process completed")
-
-"""
-lucki,days-b4-iii,"[""trap"", ""cloud rap""]",,
-maluma juancho
-"""
