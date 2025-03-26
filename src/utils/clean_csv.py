@@ -1,15 +1,45 @@
 """..."""
 import os
 import re
+import time
+import json
 import unicodedata
 import pandas as pd
-from pprint import pprint
 
+
+# -------------------------------------------------------------------------------------------------
+# Stupid small helpers.
+# -------------------------------------------------------------------------------------------------
+
+def load_json(val):
+    """Helper: safely load JSON strings, returning an empty list on error."""
+    try:
+        return json.loads(val)
+    except Exception:
+        return []
+
+
+def is_missing(field):
+    """Helper for `analyze_progress`, checks if a field is missing."""
+    if not isinstance(field, list) or len(field) == 0:
+        return True
+
+    if all(isinstance(x, str) and x.strip() == "" for x in field):
+        return True
+
+    return False
+
+# -------------------------------------------------------------------------------------------------
+# Actual utils.
+# -------------------------------------------------------------------------------------------------
 
 def process_name(name: str) -> str:
     """Process album or artist names for consistency while preserving foreign characters."""
     # 0. Lowercase the name.
     name = name.lower()
+
+    # 0.5 Super specific edge case :)
+    name = name.replace('℮', 'e')
 
     # 1. Normalize the string using NFKC (this still composes characters but doesn't force ASCII)
     name = unicodedata.normalize('NFKC', name)
@@ -53,26 +83,3 @@ def process_name(name: str) -> str:
 
     return name
 
-
-def get_query_columns(csv_path : str) -> pd.DataFrame:
-    """Adds the query columns to our DataFrame. This method assumes that the column names
-        'ALBUM' and 'ARTIST'
-       are part of the dataframe... otherwise it will throw an error of course. It then just
-       returns a dictionary of the format `artist : album` such as:
-
-        query_dict = {
-            'bladee': 'red-light',
-            'ecco2k': 'e',
-            'burial': 'untrue',
-        }
-    """
-    if not os.path.exists(csv_path):
-        raise FileNotFoundError(f"No file found at '{csv_path}'")
-
-    # Acquire the dataframe and rename it to have everything in lowercase.
-    album_df                 = pd.read_csv(csv_path)
-    album_df                 = album_df.rename(columns  = {'ALBUM'  : 'album',
-                                                           'ARTIST' : 'artist'})
-    album_df['query_artist'] = album_df['artist'].apply(process_name)
-    album_df['query_album']  = album_df['album'].apply(process_name)
-    return album_df
