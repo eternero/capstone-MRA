@@ -81,9 +81,60 @@ msd_musicnn_emb = EssentiaModel(
 )
 
 # ------------------------------------------------------------------------------
+# Approachability and Engagement Models
+# ------------------------------------------------------------------------------
+approachability_2c              = EssentiaModel(
+    graph_filename = 'src/models/approachability_2c-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['not_approachable', 'approachable'],
+    model_family   = "effnet"
+)
+
+approachability_3c              = EssentiaModel(
+    graph_filename = 'src/models/approachability_3c-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['not_approachable', 'moderately_approachable', 'approachable'],
+    model_family   = "effnet"
+)
+
+approachability_regression      = EssentiaModel(
+    graph_filename = 'src/models/approachability_regression-discogs-effnet-1.pb',
+    output         = 'model/Identity',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['approachability'],
+    model_family   = "effnet"
+)
+
+engagement_2c                    = EssentiaModel(
+    graph_filename = 'src/models/engagement_2c-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['not_engaging', 'engaging'],
+    model_family   = "effnet"
+)
+
+engagement_3c                   = EssentiaModel(
+    graph_filename = 'src/models/engagement_3c-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['not_engaging', 'moderately_engaging', 'engaging'],
+    model_family   = "effnet"
+)
+
+engagement_regression           = EssentiaModel(
+    graph_filename = 'src/models/engagement_regression-discogs-effnet-1.pb',
+    output         = 'model/Identity',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['engagement'],
+    model_family   = "effnet"
+)
+
+# ------------------------------------------------------------------------------
 # Effnet Models
 # ------------------------------------------------------------------------------
-danceability_effnet_model      = EssentiaModel(
+danceability_effnet_model       = EssentiaModel(
     graph_filename = 'src/models/danceability-discogs-effnet-1.pb',
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
@@ -154,6 +205,16 @@ voice_instrumental_effnet_model = EssentiaModel(
     classifiers    = ['instrumental', 'voice'],
     model_family   = "effnet"
 )
+
+# NOTE : Could be a good idea to zero-weight this if the instrumental value is v high.
+voice_gender_effnet_model       = EssentiaModel(
+    graph_filename = 'src/models/gender-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['female', 'male'],
+    model_family   = "effnet"
+)
+
 
 tonal_atonal_effnet_model       = EssentiaModel(
     graph_filename = 'src/models/tonal_atonal-discogs-effnet-1.pb',
