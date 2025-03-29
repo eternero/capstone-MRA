@@ -56,9 +56,12 @@ class FeatureExtractor:
 
             # Gather Inference Predictions and save it as a feature.
             predictions  = inference_tf(track_embeddings)
-            feature_name = [essentia_inf_model.classifiers[0], essentia_inf_model.model_family]
+
+            feat_index   = essentia_inf_model.target_index
+            feature_name = [essentia_inf_model.classifiers[feat_index],
+                            essentia_inf_model.model_family]
             feature_name = '_'.join(feature_name)
-            track.features[feature_name] = np.mean(predictions, axis=0)[0]
+            track.features[feature_name] = np.mean(predictions, axis=0)[feat_index]
 
         return track
 

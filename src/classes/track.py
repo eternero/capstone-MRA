@@ -115,9 +115,6 @@ class TrackPipeline:
         track_name       = track.metadata['TITLE']
         track_album      = track.metadata['ALBUM']
         track_artist     = track.metadata['ARTIST']
-        album_artist     = track.metadata['ALBUM_ARTIST']
-        # If possible, overwrite the track artist w/ album artist to avoid issues in songs with fts
-        track_artist     = album_artist if album_artist else track_artist
 
         print(f"Current : {track_artist} : {track_name}")
 
@@ -225,15 +222,9 @@ class TrackPipeline:
         done i don't know...
         """
         rows = []
-        # Define the required metadata columns
-        required_columns = ["FILENAME", "ARTIST", "TITLE", "ALBUM"]
-
         for track in self.track_list:
-            # Get metadata (using .get ensures missing keys return None)
-            metadata = {col: track.metadata.get(col, None) for col in required_columns}
-            # Merge with features (which may have arbitrary keys)
             row = {}
-            row.update(metadata)
+            row.update(track.metadata)
             row.update(track.features)
             rows.append(row)
 

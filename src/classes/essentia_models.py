@@ -1,4 +1,6 @@
-"""Classes and constants for representing Essentia ML Models and Embeddings."""
+"""Classes and constants for representing Essentia ML Models and Embeddings
+NOTE : For this simplicity, this could be considered being turned to a Dataclass.
+"""
 
 from typing import Any
 
@@ -23,6 +25,7 @@ class EssentiaModel:
         graph_filename: str,
         output        : str,
         algorithm     : str,
+        target_index  : int             = 0,
         model_family  : str             = None,
         classifiers   : list[str]       = None,
         embeddings    : 'EssentiaModel' = None,
@@ -43,6 +46,7 @@ class EssentiaModel:
 
         self.embeddings     = embeddings
         self.classifiers    = classifiers
+        self.target_index   = target_index
         self.model          = None
 
     def get_model(self) -> Any: # Not to be used atm.
@@ -88,6 +92,7 @@ approachability_2c              = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['not_approachable', 'approachable'],
+    target_index   = 1,
     model_family   = "effnet"
 )
 
@@ -112,6 +117,7 @@ engagement_2c                    = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['not_engaging', 'engaging'],
+    target_index   = 1,
     model_family   = "effnet"
 )
 
@@ -163,6 +169,7 @@ mood_party_effnet_model         = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['non_party', 'party'],    # Metadata has it like this flipped, idk.
+    target_index   = 1,                         # `target_index` is a stupid fix for this.
     model_family   = "effnet"
 )
 
@@ -171,6 +178,7 @@ mood_relaxed_effnet_model       = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['non_relaxed', 'relaxed'],    # Also flipped man idk.
+    target_index   = 1,
     model_family   = "effnet"
 )
 
@@ -179,6 +187,7 @@ mood_sad_effnet_model           = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['non_sad', 'sad'],
+    target_index   = 1,
     model_family   = "effnet"
 )
 
