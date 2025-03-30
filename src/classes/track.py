@@ -112,9 +112,9 @@ class TrackPipeline:
 
 
         # Once we've got the metadata, we can proceed to get the Spotify API Features
-        track_name       = track.metadata['TITLE']
-        track_album      = track.metadata['ALBUM']
-        track_artist     = track.metadata['ARTIST']
+        track_name       = track.metadata['title']
+        track_album      = track.metadata['album']
+        track_artist     = track.metadata['artist']
 
         print(f"Current : {track_artist} : {track_name}")
 
@@ -148,8 +148,8 @@ class TrackPipeline:
                 print(f"Retrying in {delay:.2f} seconds...")
                 time.sleep(delay)
 
-    def run_pipeline(self, essentia_models_dict : Dict[EssentiaModel, List[EssentiaModel]]
-                    ) -> List[Track]:
+    def run_pipeline(self, essentia_models_dict : Dict[EssentiaModel, List[EssentiaModel]],
+                     only_track : bool = False) -> List[Track]:
         """
         Processes all tracks in the following order:
           1. Extract metadata
@@ -162,6 +162,8 @@ class TrackPipeline:
 
                 This is because multiple models can depend on the same embeddings,
                 and containing them as such provides an efficient approach..
+            only_track : Determines whether only the Track Metadata will be extracted.
+                         Defaults to False. If True, no models or algorithms will run.
         """
 
         # -----------------------------------------------------------------------------------------
@@ -186,13 +188,14 @@ class TrackPipeline:
         # Step 2 : Essentia Models Extraction
         # -----------------------------------------------------------------------------------------
         start  = time.time()
-        result = run_in_parallel(self.audio_feature_extractor.retrieve_all_essentia_features,
-                                    self.track_list,
-                                    essentia_models_dict,
-                                    executor_type="process"
-                 )
 
-        self.track_list = [track for track in result if track is not None]
+        if not only_track:
+            result = run_in_parallel(self.audio_feature_extractor.retrieve_all_essentia_features,
+                                        self.track_list,
+                                        essentia_models_dict,
+                                        executor_type="process"
+                    )
+            self.track_list = [track for track in result if track is not None]
 
         print(f"Executed in {time.time() - start}s")
         return self.track_list

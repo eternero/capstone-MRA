@@ -63,13 +63,13 @@ class MetadataExtractor:
         """
 
         # First overwrite the `artist` field and once we're done, delete the `album_artist` field.`
-        metadata["ARTIST"] = (metadata["ALBUM_ARTIST"] if metadata["ALBUM_ARTIST"]
-                                                       else metadata["ARTIST"])
-        del metadata["ALBUM_ARTIST"]
+        metadata["artist"] = (metadata["album_artist"] if metadata["album_artist"]
+                                                       else metadata["artist"])
+        del metadata["album_artist"]
 
         # Now, create the two new clean fields for `artist` and `album`
-        metadata["CLEAN_ARTIST"] = process_name(metadata["ARTIST"])
-        metadata["CLEAN_ALBUM"]  = process_name(metadata["ALBUM"])
+        metadata["clean_artist"] = process_name(metadata["artist"])
+        metadata["clean_album"]  = process_name(metadata["album"])
 
         return metadata
 
@@ -109,12 +109,12 @@ class MetadataExtractor:
         """
         audio    = FLAC(track_path)
         metadata = {
-            "FILENAME": os.path.basename(track_path),
-            "ARTIST"       : MetadataExtractor._process_field(audio.get("artist") or audio.get("artists")),
-            "TITLE"        : MetadataExtractor._process_field(audio.get("title") or audio.get("song_name")),
-            "ALBUM"        : MetadataExtractor._process_field(audio.get("album") or audio.get("album_name")),
-            "ALBUM_ARTIST" : MetadataExtractor._process_field(audio.get("album_artist") or audio.get("albumartist")),
-            "RELEASE_YEAR" : MetadataExtractor._process_field(audio.get("date") or audio.get("year"))
+            "filename": os.path.basename(track_path),
+            "artist"       : MetadataExtractor._process_field(audio.get("artist") or audio.get("artists")),
+            "title"        : MetadataExtractor._process_field(audio.get("title") or audio.get("song_name")),
+            "album"        : MetadataExtractor._process_field(audio.get("album") or audio.get("album_name")),
+            "album_artist" : MetadataExtractor._process_field(audio.get("album_artist") or audio.get("albumartist")),
+            "release_year" : MetadataExtractor._process_field(audio.get("date") or audio.get("year"))
         }
 
         return MetadataExtractor._clean_metadata(metadata)
@@ -134,12 +134,12 @@ class MetadataExtractor:
         audio    = MP3(track_path, ID3=ID3)
         tags     = audio.tags
         metadata = {
-            "FILENAME"     : os.path.basename(track_path),
-            "ARTIST"       : tags.get("TPE1").text[0] if "TPE1" in tags and tags.get("TPE1").text else None,
-            "TITLE"        : tags.get("TIT2").text[0] if "TIT2" in tags and tags.get("TIT2").text else None,
-            "ALBUM"        : tags.get("TALB").text[0] if "TALB" in tags and tags.get("TALB").text else None,
-            "ALBUM_ARTIST" : tags.get("TPE2").text[0] if "TPE2" in tags and tags.get("TPE2").text else None,
-            "RELEASE_YEAR" : tags.get("TDRC").text[0] if "TDRC" in tags and tags.get("TDRC").text else None
+            "filename"     : os.path.basename(track_path),
+            "artist"       : tags.get("TPE1").text[0] if "TPE1" in tags and tags.get("TPE1").text else None,
+            "title"        : tags.get("TIT2").text[0] if "TIT2" in tags and tags.get("TIT2").text else None,
+            "album"        : tags.get("TALB").text[0] if "TALB" in tags and tags.get("TALB").text else None,
+            "album_artist" : tags.get("TPE2").text[0] if "TPE2" in tags and tags.get("TPE2").text else None,
+            "release_year" : tags.get("TDRC").text[0] if "TDRC" in tags and tags.get("TDRC").text else None
         }
 
         return MetadataExtractor._clean_metadata(metadata)
