@@ -1,4 +1,6 @@
-"""Classes and constants for representing Essentia ML Models and Embeddings."""
+"""Classes and constants for representing Essentia ML Models and Embeddings
+NOTE : For this simplicity, this could be considered being turned to a Dataclass.
+"""
 
 from typing import Any
 
@@ -23,6 +25,7 @@ class EssentiaModel:
         graph_filename: str,
         output        : str,
         algorithm     : str,
+        target_index  : int             = 0,
         model_family  : str             = None,
         classifiers   : list[str]       = None,
         embeddings    : 'EssentiaModel' = None,
@@ -43,6 +46,7 @@ class EssentiaModel:
 
         self.embeddings     = embeddings
         self.classifiers    = classifiers
+        self.target_index   = target_index
         self.model          = None
 
     def get_model(self) -> Any: # Not to be used atm.
@@ -81,9 +85,62 @@ msd_musicnn_emb = EssentiaModel(
 )
 
 # ------------------------------------------------------------------------------
+# Approachability and Engagement Models
+# ------------------------------------------------------------------------------
+approachability_2c              = EssentiaModel(
+    graph_filename = 'src/models/approachability_2c-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['not_approachable', 'approachable'],
+    target_index   = 1,
+    model_family   = "effnet"
+)
+
+approachability_3c              = EssentiaModel(
+    graph_filename = 'src/models/approachability_3c-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['not_approachable', 'moderately_approachable', 'approachable'],
+    model_family   = "effnet"
+)
+
+approachability_regression      = EssentiaModel(
+    graph_filename = 'src/models/approachability_regression-discogs-effnet-1.pb',
+    output         = 'model/Identity',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['approachability'],
+    model_family   = "effnet"
+)
+
+engagement_2c                    = EssentiaModel(
+    graph_filename = 'src/models/engagement_2c-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['not_engaging', 'engaging'],
+    target_index   = 1,
+    model_family   = "effnet"
+)
+
+engagement_3c                   = EssentiaModel(
+    graph_filename = 'src/models/engagement_3c-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['not_engaging', 'moderately_engaging', 'engaging'],
+    model_family   = "effnet"
+)
+
+engagement_regression           = EssentiaModel(
+    graph_filename = 'src/models/engagement_regression-discogs-effnet-1.pb',
+    output         = 'model/Identity',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['engagement'],
+    model_family   = "effnet"
+)
+
+# ------------------------------------------------------------------------------
 # Effnet Models
 # ------------------------------------------------------------------------------
-danceability_effnet_model      = EssentiaModel(
+danceability_effnet_model       = EssentiaModel(
     graph_filename = 'src/models/danceability-discogs-effnet-1.pb',
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
@@ -112,6 +169,7 @@ mood_party_effnet_model         = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['non_party', 'party'],    # Metadata has it like this flipped, idk.
+    target_index   = 1,                         # `target_index` is a stupid fix for this.
     model_family   = "effnet"
 )
 
@@ -120,6 +178,7 @@ mood_relaxed_effnet_model       = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['non_relaxed', 'relaxed'],    # Also flipped man idk.
+    target_index   = 1,
     model_family   = "effnet"
 )
 
@@ -128,6 +187,7 @@ mood_sad_effnet_model           = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['non_sad', 'sad'],
+    target_index   = 1,
     model_family   = "effnet"
 )
 
@@ -154,6 +214,16 @@ voice_instrumental_effnet_model = EssentiaModel(
     classifiers    = ['instrumental', 'voice'],
     model_family   = "effnet"
 )
+
+# NOTE : Could be a good idea to zero-weight this if the instrumental value is v high.
+voice_gender_effnet_model       = EssentiaModel(
+    graph_filename = 'src/models/gender-discogs-effnet-1.pb',
+    output         = 'model/Softmax',
+    algorithm      = 'TensorflowPredict2D',
+    classifiers    = ['female', 'male'],
+    model_family   = "effnet"
+)
+
 
 tonal_atonal_effnet_model       = EssentiaModel(
     graph_filename = 'src/models/tonal_atonal-discogs-effnet-1.pb',

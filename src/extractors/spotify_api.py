@@ -13,10 +13,10 @@ class SpotifyAPI:
     @staticmethod
     def get_access_token(client_id : str, client_secret : str, auth_code : str) -> str:
         """Exchange authorization code for access token."""
-        token_headers = {
+        token_headers  = {
             'Authorization': 'Basic ' + base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode()
-            }
-        token_data = {
+        }
+        token_data     = {
             'grant_type': 'authorization_code',
             'code': auth_code,
             'redirect_uri': 'https://127.0.0.1:5555/callback'
@@ -146,9 +146,8 @@ class SpotifyAPI:
             KeyError: The expected data was not found in the API response.
         """
 
-        # Construct the search query with field filters
-        # query = f'track:"{track_name}" artist:"{track_artist}" album:"{track_album}"'    # Old query w/ filters.
-        query = f'{track_artist} {track_name} {track_album}'
+        # NOTE : Esta mierda es más mala que el diablo. No lo toquen.
+        query = f'{track_artist} {track_name}'
 
         # Define the endpoint and headers
         endpoint = "https://api.spotify.com/v1/search"
@@ -172,10 +171,9 @@ class SpotifyAPI:
             # Extract the track information from the response
             track_item = data['tracks']['items'][0]
             spotify_features =  {
-                                  "uri"        : track_item['uri'],
-                                  "sp_name"    : track_item['name'],
+                                  "uri"        : track_item['uri'],         # Tanta mierda
+                                  "sp_name"    : track_item['name'],        # y nada sirve.
                                   "popularity" : track_item['popularity'],
-                                  "album_id"   : track_item['album']['id'],
                                 }
             return spotify_features
 

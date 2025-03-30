@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 from mutagen.id3 import ID3
 from mutagen.mp3 import MP3
 from mutagen.flac import FLAC
+from src.utils.clean_csv import process_name
 
 
 class MetadataExtractor:
@@ -46,6 +47,34 @@ class MetadataExtractor:
 
 
     @staticmethod
+    def _clean_metadata(metadata : dict[str]) -> dict[str]:
+        """Cleans the acquired metadata. The main functionality of this method is that (1) it
+        overwrites the `artist` with the `album_artist` and (2) it cleans the `artist` and
+        `album` fields so that they can then be used for JOINs when turned to tables.
+
+        NOTE : Could add cleaning for release year. Some releases are in YYYY-MM-DD while others
+               are in YYYY. Making them all YYYY is ideal.
+
+        Args:
+            metadata : The track metadata...
+
+        Returns:
+            The cleaned up metadata...
+        """
+
+        # First overwrite the `artist` field and once we're done, delete the `album_artist` field.`
+        metadata["artist"] = (metadata["album_artist"] if metadata["album_artist"]
+                                                       else metadata["artist"])
+        del metadata["album_artist"]
+
+        # Now, create the two new clean fields for `artist` and `album`
+        metadata["clean_artist"] = process_name(metadata["artist"])
+        metadata["clean_album"]  = process_name(metadata["album"])
+
+        return metadata
+
+
+    @staticmethod
     def extract(track_path: str) -> Optional[Dict[str, Any]]:
         """
         Extracts metadata from the audio file specified by `track_path`.
@@ -66,6 +95,7 @@ class MetadataExtractor:
             print("Invalid file type, please provide a FLAC or MP3 only.")
             return None
 
+
     @staticmethod
     def _extract_flac(track_path: str) -> Dict[str, Any]:
         """
@@ -77,15 +107,18 @@ class MetadataExtractor:
         Returns:
             A dictionary containing metadata for the FLAC file.
         """
-        audio = FLAC(track_path)
-        return {
-            "FILENAME": os.path.basename(track_path),
-            "ARTIST"  : MetadataExtractor._process_field(audio.get("artist") or audio.get("artists")),
-            "TITLE"   : MetadataExtractor._process_field(audio.get("title") or audio.get("song_name")),
-            "ALBUM"   : MetadataExtractor._process_field(audio.get("album") or audio.get("album_name")),
-            "ALBUM_ARTIST": MetadataExtractor._process_field(audio.get("album_artist") or audio.get("albumartist")),
-            "RELEASE_YEAR": MetadataExtractor._process_field(audio.get("date") or audio.get("year"))
+        audio    = FLAC(track_path)
+        metadata = {
+            "filename": os.path.basename(track_path),
+            "artist"       : MetadataExtractor._process_field(audio.get("artist") or audio.get("artists")),
+            "title"        : MetadataExtractor._process_field(audio.get("title") or audio.get("song_name")),
+            "album"        : MetadataExtractor._process_field(audio.get("album") or audio.get("album_name")),
+            "album_artist" : MetadataExtractor._process_field(audio.get("album_artist") or audio.get("albumartist")),
+            "release_year" : MetadataExtractor._process_field(audio.get("date") or audio.get("year"))
         }
+
+        return MetadataExtractor._clean_metadata(metadata)
+
 
     @staticmethod
     def _extract_mp3(track_path: str) -> Dict[str, Any]:
@@ -98,13 +131,15 @@ class MetadataExtractor:
         Returns:
             A dictionary containing metadata for the MP3 file.
         """
-        audio = MP3(track_path, ID3=ID3)
-        tags = audio.tags
-        return {
-            "FILENAME": os.path.basename(track_path),
-            "ARTIST"  : tags.get("TPE1").text[0] if "TPE1" in tags and tags.get("TPE1").text else None,
-            "TITLE"   : tags.get("TIT2").text[0] if "TIT2" in tags and tags.get("TIT2").text else None,
-            "ALBUM"   : tags.get("TALB").text[0] if "TALB" in tags and tags.get("TALB").text else None,
-            "ALBUM_ARTIST": tags.get("TPE2").text[0] if "TPE2" in tags and tags.get("TPE2").text else None,
-            "RELEASE_YEAR": tags.get("TDRC").text[0] if "TDRC" in tags and tags.get("TDRC").text else None
+        audio    = MP3(track_path, ID3=ID3)
+        tags     = audio.tags
+        metadata = {
+            "filename"     : os.path.basename(track_path),
+            "artist"       : tags.get("TPE1").text[0] if "TPE1" in tags and tags.get("TPE1").text else None,
+            "title"        : tags.get("TIT2").text[0] if "TIT2" in tags and tags.get("TIT2").text else None,
+            "album"        : tags.get("TALB").text[0] if "TALB" in tags and tags.get("TALB").text else None,
+            "album_artist" : tags.get("TPE2").text[0] if "TPE2" in tags and tags.get("TPE2").text else None,
+            "release_year" : tags.get("TDRC").text[0] if "TDRC" in tags and tags.get("TDRC").text else None
         }
+
+        return MetadataExtractor._clean_metadata(metadata)
