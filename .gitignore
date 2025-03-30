@@ -5,6 +5,7 @@ src/.env
 .DS_Store
 .cache*
 **.csv
+**.log
 
 # Ignore all __pycache__ directories recursively
 **/__pycache__/*

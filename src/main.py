@@ -11,9 +11,18 @@ from src.classes.essentia_models import (# Models
                                          mood_acoustic_effnet_model,
                                          mood_electronic_effnet_model,
                                          voice_instrumental_effnet_model,
+                                         voice_gender_effnet_model,
                                          tonal_atonal_effnet_model,
                                          timbre_effnet_model,
                                          nsynth_timbre_effnet_model,
+                                         # Approach Models
+                                         approachability_2c,
+                                        #  approachability_3c,
+                                         approachability_regression,
+                                         # Engage Models
+                                         engagement_2c,
+                                        #  engagement_3c,
+                                         engagement_regression,
                                          # Embeddings
                                          discogs_effnet_emb
                                         )
@@ -21,7 +30,7 @@ from src.classes.essentia_algos import EssentiaAlgo
 
 if __name__ == '__main__':
     print(os.cpu_count())
-    AUDIO_PATH = "src/audio/testing_dataset_flac"
+    AUDIO_PATH = "src/audio/dataset_flac"
     track_pipeline = TrackPipeline(AUDIO_PATH)
 
     essentia_models_dict =  {
@@ -39,12 +48,12 @@ if __name__ == '__main__':
                                                 voice_instrumental_effnet_model,
                                                 tonal_atonal_effnet_model,
                                                 timbre_effnet_model,
-                                                nsynth_timbre_effnet_model
+                                                nsynth_timbre_effnet_model,
                                                 ]
                             }
 
     # NOTE : Removed intensity and time signature given that they're not very accurate.
-    essentia_algos_dict  = {
+    essentia_objs_dict  =  {
                            "algorithms" : [
                                           EssentiaAlgo.el_monstruo,
                                           EssentiaAlgo.get_bpm_re2013,
@@ -62,12 +71,18 @@ if __name__ == '__main__':
                                                 mood_acoustic_effnet_model,
                                                 mood_electronic_effnet_model,
                                                 voice_instrumental_effnet_model,
+                                                voice_gender_effnet_model,
                                                 tonal_atonal_effnet_model,
                                                 timbre_effnet_model,
-                                                nsynth_timbre_effnet_model
+                                                nsynth_timbre_effnet_model,
+                                                approachability_2c,
+                                                approachability_regression,
+                                                engagement_2c,
+                                                engagement_regression
+                                                # Excluded 3c models since I gotta make some changes first.
                                                 ]
                            }
 
-    track_list = track_pipeline.run_pipeline(essentia_algos_dict)
+    track_list = track_pipeline.run_pipeline(essentia_objs_dict)
     track_df   = track_pipeline.get_track_dataframe()
-    track_df.to_csv('metadata_clean.csv', index=False)
+    track_df.to_csv('03_29_25_test_features_full.csv', index=False)
