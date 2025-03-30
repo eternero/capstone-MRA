@@ -8,7 +8,7 @@ import logging
 import nodriver
 import pandas as pd
 from nodriver import Tab, Browser
-from src.utils.clean_csv import load_json, is_missing, process_name
+from src.utils.clean_csv import load_json, is_missing
 
 # Configuring the logging
 logging.basicConfig(
@@ -45,29 +45,6 @@ class DataHandler:
         self.progress_path = progress_path
         self.failure_path  = failure_path
 
-    def process_dataset(self) -> pd.DataFrame:
-        """Cleans up the `ALBUM` and `ARTIST` columns from a dataset and groups them so that they
-        can then be used to query RateYourMusic for User-Generated Content Retrieval. This method
-        of course assumes that they dataset which is being read at `dataset_path` has the columns:
-            `ALBUM` and `ARTIST`
-
-        Returns
-            grouped_df : The resulting dataframe after cleaning and grouping the dataset.
-        """
-
-        # Clean the artist and album fields.
-        album_df                 = pd.read_csv(self.dataset_path)
-        album_df['clean_album']  = album_df['ALBUM'].apply(process_name)
-        album_df['clean_artist'] = album_df['ARTIST'].apply(process_name)
-
-        # Group by 'clean_artist' and 'clean_album' by dropping duplicates and save it.
-        grouped_df = album_df.drop_duplicates(subset=['clean_artist', 'clean_album'])
-        base, ext  = os.path.splitext(self.dataset_path)
-        filename   = f"{base}_clean{ext}"
-        grouped_df.to_csv(filename, index=False)
-
-        return grouped_df
-
 
     def save_progress(self, path : str, album_data : dict[str], headers : list[str]):
         """
@@ -100,7 +77,8 @@ class DataHandler:
                be manually retrieved or are just of no good.
         """
         # Acquire our current DataFrame and then retrieve the progress.
-        album_df           = self.process_dataset()
+        album_df           = pd.read_csv(self.dataset_path)
+        album_df           = album_df.drop_duplicates(subset=['clean_artist', 'clean_album'])
         pairs_to_exclude   = set()
 
         # Check for progress.
@@ -108,7 +86,7 @@ class DataHandler:
             progress_df    = pd.read_csv(self.progress_path)
             pairs_to_exclude.update(zip(progress_df["album"], progress_df["artist"]))
 
-        # Check for failures.
+        # Check for failures. These will have to be added manually.
         if os.path.exists(self.failure_path)  and os.path.getsize(self.failure_path) > 0:
             failure_df     = pd.read_csv(self.failure_path)
             pairs_to_exclude.update(zip(failure_df["album"], failure_df["artist"]))
@@ -116,12 +94,13 @@ class DataHandler:
         # If any pairs are in either CSV, exclude them from the DataFrame.
         if pairs_to_exclude:
             remainder_mask = [
-                               (row["album"], row["artist"]) not in pairs_to_exclude
+                               (row["clean_album"], row["clean_artist"]) not in pairs_to_exclude
                                for _, row in album_df.iterrows()
                              ]
             album_df = album_df[remainder_mask]
 
-        return album_df
+        # Only keep the important columns.
+        return album_df[["clean_album", 'clean_artist']]
 
 
     def analyze_progress(self) -> pd.DataFrame:
@@ -134,22 +113,25 @@ class DataHandler:
         """
 
         # Read the CSV file
-        album_df = pd.read_csv(self.progress_path)
+        progress_df = pd.read_csv(self.progress_path)
 
         # Convert JSON strings to lists for the target columns.
         for col in ['pri_genres', 'sec_genres', 'pri_desc']:
-            album_df[col] = album_df[col].apply(load_json)
+            progress_df[col] = progress_df[col].apply(load_json)
 
-        # Create a mask for rows missing any of the three fields.
-        missing_mask      = (
-            album_df['pri_genres'].apply(is_missing) |
-            album_df['sec_genres'].apply(is_missing) |
-            album_df['pri_desc'].apply(is_missing)
+        # Create a mask for albums missing any of the three fields.
+        missing_mask         = (
+            progress_df['pri_genres'].apply(is_missing) |
+            progress_df['sec_genres'].apply(is_missing) |
+            progress_df['pri_desc'].apply(is_missing)
         )
 
-        # Filter DataFrame to keep only artist and album for rows with missing fields.
-        incomplete_df     = album_df.loc[missing_mask, ['artist', 'album']]
-        return incomplete_df
+        # Filter DataFrame to keep only artist and album for albums with missing fields.
+        incomplete_df        = progress_df.loc[missing_mask, ['artist', 'album']]
+
+        # Rename columns since this will be concatenated back to the `album_df`
+        return incomplete_df.rename(columns={'artist' : 'clean_artist', 'album' : 'clean_album'})
+
 
 
 class NoDriving(DataHandler):
@@ -199,9 +181,10 @@ class NoDriving(DataHandler):
                                 'album', 'ep', 'mixtape', 'comp'
                              ]
 
-        # Initialize our dataframe.
-        self.album_df      = self.load_progress()
-
+        # Initialize our dataframe. First loading the progress and then adding any missing albums.
+        progress_df        = self.load_progress()
+        missing_df         = self.analyze_progress()
+        self.album_df      = pd.concat([progress_df, missing_df])
 
     @staticmethod
     async def check_for_error( page: Tab) -> bool:
@@ -243,14 +226,13 @@ class NoDriving(DataHandler):
         Retrives the data from RateYourMusic for one release (album, ep, mixtape or compilation).
         """
 
-        results   =  {}
         for release in self.release_types:
 
             # Access the page.
-            url   = f"https://rateyourmusic.com/release/{release}/{artist_name}/{album_name}/"
-            page  = await browser.get(url)
+            url     = f"https://rateyourmusic.com/release/{release}/{artist_name}/{album_name}/"
+            page    = await browser.get(url)
+            results =  {}
             logging.info("Accessing URL: %s", url)
-
 
             # Check for errors.
             error = await NoDriving.check_for_error(page)
@@ -266,8 +248,17 @@ class NoDriving(DataHandler):
                     all_data           = element.text_all
 
                     logging.info("Successfully retreived data from RYM: %s", span_class)
-                    results[span_name] = json.dumps([data.strip().lower()               # Not sure if
-                                                     for data in all_data.split(",")])  # this will work...
+
+                    extracted_data     = [data.strip().lower()for data in all_data.split(",")]
+                    results[span_name] = json.dumps(extracted_data)
+
+                    # This is done since at times, an attribute will be in the page source code,
+                    # but it won't really have anything (e.g. descriptors = ['']) and that's no good
+                    if is_missing(extracted_data) or not extracted_data:
+                        logging.warning("No %s data could be extracted for release : %s",span_class,
+                                                                                         album_name)
+                        results = {}    # Set results to `{}` since we don't want incomplete data.
+                        break
 
             except Exception as e:
                 # If any span fails, we skip this release type altogether.
@@ -294,8 +285,8 @@ class NoDriving(DataHandler):
         for row in self.album_df.itertuples(index=True):
 
             # Get our basic fields
-            artist_name    = row.query_artist
-            album_name     = row.query_album
+            artist_name    = row.clean_artist
+            album_name     = row.clean_album
 
             # These fields determine what data will be saved (failure or progress) and where.
             save_path      = self.progress_path
