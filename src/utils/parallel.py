@@ -2,8 +2,20 @@
 File which gathers methods to be used for parallelism.
 """
 import os
+from functools import lru_cache
 from typing import Any, Callable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+import essentia.standard as es
+
+
+@lru_cache(None)
+def load_essentia_model(algorithm_name : str, graph_filename : str, output_name : str):
+    """Allows for Essentia Models to be loaded and cached within processes."""
+    model_callable = getattr(es, algorithm_name)
+    model_tf       = model_callable(graphFilename = graph_filename,
+                                    output        = output_name)
+    return model_tf
+
 
 def run_in_parallel(func         : Callable,
                     item_list    : list[Any], *args,
