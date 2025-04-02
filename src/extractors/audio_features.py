@@ -3,25 +3,15 @@ NOTE This code is still in development, trying out different features. Nonethele
 stick to essentia it might be best to join this with classes/essentia_models.py
 """
 
-from functools import lru_cache
 from typing import TYPE_CHECKING, Callable
 import librosa
 import numpy as np
-import essentia.standard as es
+from src.utils.parallel import load_essentia_model
 from src.classes.essentia_models import EssentiaModel
 
 # Import Track only for type-checking; this import will not be executed at runtime.
 if TYPE_CHECKING:
     from src.classes.track import Track
-
-
-@lru_cache(None)
-def load_essentia_model(algorithm_name : str, graph_filename : str, output_name : str):
-    """..."""
-    model_callable = getattr(es, algorithm_name)
-    model_tf       = model_callable(graphFilename = graph_filename,
-                                    output        = output_name)
-    return model_tf
 
 
 class FeatureExtractor:
@@ -42,9 +32,9 @@ class FeatureExtractor:
                                 essentia_inference_model_list : list[EssentiaModel]):
 
         # Load and Cache the Embedding Model
-        embeddings_tf = load_essentia_model(essentia_embeddings.algorithm,
-                                            essentia_embeddings.graph_filename,
-                                            essentia_embeddings.output)
+        embeddings_tf    = load_essentia_model(essentia_embeddings.algorithm,
+                                               essentia_embeddings.graph_filename,
+                                               essentia_embeddings.output)
 
         # Compute the embeddings
         track_embeddings = embeddings_tf(track.track_mono_16)
