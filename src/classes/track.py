@@ -15,7 +15,7 @@ from requests.exceptions import HTTPError, Timeout
 
 from src.utils.parallel import run_in_parallel
 from src.extractors.metadata import MetadataExtractor
-from src.classes.essentia_models import EssentiaModel
+from src.classes.essentia_containers import FeatureTask
 from src.extractors.audio_features import FeatureExtractor
 from src.extractors.spotify_api import SpotifyAPI, request_access_token
 
@@ -138,7 +138,7 @@ class TrackPipeline:
                 time.sleep(delay)
 
 
-    def run_pipeline(self, essentia_models_dict : Dict[EssentiaModel, List[EssentiaModel]],
+    def run_pipeline(self, essentia_task_list : List[FeatureTask],
                      only_track : bool = False) -> List[Track]:
         """
         Processes all tracks in the following order:
@@ -180,13 +180,20 @@ class TrackPipeline:
         start  = time.time()
 
         if not only_track:
-            result = run_in_parallel(FeatureExtractor.retrieve_all_essentia_features,
-                                        self.track_list,
-                                        essentia_models_dict,
+            track_paths  =  [track.track_path for track in self.track_list]
+            feat_results = run_in_parallel(FeatureExtractor.retrieve_all_essentia_features,
+                                        track_paths,
+                                        essentia_task_list,
+                                        num_workers=8,
                                         executor_type="process",
-                                        num_workers=10
-                    )
-            self.track_list = [track for track in result if track is not None]
+                        )
+
+            for track, features_dict in zip(self.track_list, feat_results):
+                if features_dict is not None:
+                    track.update_features(features_dict)
+
+                else:   # There are no logs right now lol, will have to change that
+                    print(f"No features returned for track: {track.track_path}. Check worker logs.")
 
         print(f"Executed in {time.time() - start}s")
         return self.track_list
