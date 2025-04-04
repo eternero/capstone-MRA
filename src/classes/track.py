@@ -40,7 +40,6 @@ class Track:
 
         features   : The dictionary which stores the features that have been acquired for the track
         metadata   : The metadata of the track. Includes track name, album name, artist name etc...
-        metadata_extractor : The instance of `MetadataExtractor` used to acquire the metadata.
 
     TODO : Missing implementation of SpotifyAPI here, work on it.
     """
@@ -48,7 +47,6 @@ class Track:
         self.track_path    = track_path
         self.track_mono_16 = None
         self.track_mono_44 = None
-
 
         self.features      : Dict[str, Any] = {}
         self.metadata      : Dict[str, Any] = {}
@@ -90,13 +88,6 @@ class TrackPipeline:
         self.sample_rate             = sample_rate
         self.track_list: List[Track] = []
 
-        # Define extractors to help ourselves.
-        self.spotify_api_extractor   = SpotifyAPI()
-        self.metadata_extractor      = MetadataExtractor()
-        self.audio_feature_extractor = FeatureExtractor()
-
-        # NOTE : Make it so that the `FeatureExtractor` class works similar
-        # to these previous two which work on a single track, rather than a list.
 
     def _get_metadata_and_spotify(self, track_path : Track, access_token : str):
         """Acquires the metadata and Spotify API features for a single track.
@@ -107,9 +98,8 @@ class TrackPipeline:
         """
         # Initialize a `Track` object.
         track    = Track(track_path=track_path)
-        metadata = self.metadata_extractor.extract(track.track_path)
+        metadata = MetadataExtractor.extract(track.track_path)
         track.update_metadata(metadata)
-
 
         # Once we've got the metadata, we can proceed to get the Spotify API Features
         track_name       = track.metadata['title']
@@ -123,13 +113,12 @@ class TrackPipeline:
         base_delay  = 1     # initial delay in seconds.
         retries     = 0     # used to track number of retries.
 
+
         # Use exponential backoff until request to Spotify API is successful.
         while True:
             try:
-                spotify_features = self.spotify_api_extractor.get_spotify_features(track_artist,
-                                                                                   track_name,
-                                                                                   track_album,
-                                                                                   access_token)
+                spotify_features = SpotifyAPI.get_spotify_features(track_artist,track_name,
+                                                                   track_album,access_token)
                 track.update_features(spotify_features)
                 return track
 
@@ -147,6 +136,7 @@ class TrackPipeline:
                 delay = base_delay * (2 ** (retries - 1)) + random.uniform(0, 0.5)
                 print(f"Retrying in {delay:.2f} seconds...")
                 time.sleep(delay)
+
 
     def run_pipeline(self, essentia_models_dict : Dict[EssentiaModel, List[EssentiaModel]],
                      only_track : bool = False) -> List[Track]:
@@ -190,10 +180,11 @@ class TrackPipeline:
         start  = time.time()
 
         if not only_track:
-            result = run_in_parallel(self.audio_feature_extractor.retrieve_all_essentia_features,
+            result = run_in_parallel(FeatureExtractor.retrieve_all_essentia_features,
                                         self.track_list,
                                         essentia_models_dict,
-                                        executor_type="process"
+                                        executor_type="process",
+                                        num_workers=10
                     )
             self.track_list = [track for track in result if track is not None]
 

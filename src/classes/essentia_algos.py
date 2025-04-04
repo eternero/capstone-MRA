@@ -10,9 +10,11 @@ that has to be provided is a `Track` and the method takes care of the rest.
 """
 
 import numpy as np
+from collections import Counter
 import essentia.standard as es
 from src.classes.track import Track
-from collections import Counter
+from src.utils.parallel import get_pitch_tracker, load_essentia_algorithm
+
 
 class EssentiaAlgo:
     """Just read the file docstring."""
@@ -22,7 +24,7 @@ class EssentiaAlgo:
         """
         NOTE : This can also get beats and other necessary stuff
         """
-        rhythm_extractor = es.RhythmExtractor2013(method="multifeature")
+        rhythm_extractor = load_essentia_algorithm("RhythmExtractor2013", method="multifeature")
         bpm, _, _, _, _  = rhythm_extractor(track.track_mono_44)
 
         # Update the features for our track and return (bpm, beats)
@@ -32,78 +34,45 @@ class EssentiaAlgo:
     @staticmethod
     def get_energy(track : Track):
         """Get the track energy using the Essentia Energy Algorithm."""
-        track.features['energy'] = es.Energy()(track.track_mono_44)
-
-
-    @staticmethod
-    def get_intensity(track : Track):
-        """NOTE : Quality: outdated (non-reliable, poor accuracy). Yea, it fucking sucks"""
-        track.features['intensity'] = es.Intensity()(track.track_mono_44)
+        energy_extractor         = load_essentia_algorithm("Energy")
+        track.features['energy'] = energy_extractor(track.track_mono_44)
 
 
     @staticmethod
     def get_loudness_ebu_r128(track : Track):
         """..."""
-        stereo_signal, _, _, _, _, _              = es.AudioLoader(filename=track.track_path)()
-        _, _, integrated_loudness, loudness_range = es.LoudnessEBUR128()(stereo_signal)
+        audio_loader       = load_essentia_algorithm("AudioLoader", filename=track.track_path)
+        loudness_extractor = load_essentia_algorithm("LoudnessEBUR128")
+
+        stereo_signal, _, _, _, _, _              = audio_loader()
+        _, _, integrated_loudness, loudness_range = loudness_extractor(stereo_signal)
         track.features['integrated_loudness']     = integrated_loudness
         track.features['loudness_range']          = loudness_range
 
 
-
     @staticmethod
-    def get_time_signature(track : Track):
-        """This method is used to acquire the time signature of a track. It must be mentioned
-        however that the Essentia Meter method is Experimental... and not advised to be used.
-        Oh well.
+    def harmonic_f0(track : Track):
+        """Not exactly an Essentia Algorithm, but this is the replacement (and improvement)
+        over CREPE. We're using HarmoF0 for pitch estimation and to acquire significant features
+        based on the track's pitch.
         """
-        # Acquire the Loudness and Loudness Band Ratio
-        _, beats, _, _, _                  = es.RhythmExtractor2013()(track.track_mono_44)
-        beat_loudness, loudness_band_ratio = es.BeatsLoudness(beats = beats)(track.track_mono_44)
+        pitch_tracker              = get_pitch_tracker()
+        _, freq, _, activation_map = pitch_tracker.pred(track.track_mono_16, 16000)
 
-        # Acauire the beatogram and save the time signature.
-        beatogram                          = es.Beatogram()(beat_loudness, loudness_band_ratio)
-        time_signature                     = es.Meter()(beatogram)
-        track.features['time_signature']   = time_signature
+        # First, we compute the weighted histogram from the activation map.
+        activation_vec_length   = activation_map.shape[1]
+        weighted_histogram      = np.zeros(activation_vec_length)
 
+        for activation_vec in activation_map:
+            weighted_histogram += activation_vec
 
-    @staticmethod
-    def get_mfcc_energy(track : Track):
-        """_summary_
+        # Once we're done summing all the activation vectors, normalize the histogram.
+        weighted_histogram     /= np.sum(weighted_histogram)
 
-        Args:
-            track : _description_
-
-        Returns:
-            _type_: _description_
-        """
-
-        # Prepare our needed Essentia algorithms
-        mfcc           = es.MFCC()
-        window         = es.Windowing(type = 'hann')
-        spectrum       = es.Spectrum()
-
-        track_mono     = track.track_mono_44
-        mfcc_band_list = []
-        frame_size     = 1024   # This is the common frame size, so I'm using it!
-
-
-        for ix in range(0, len(track_mono), frame_size):
-
-            curr_frame     = track_mono[ix:ix + frame_size]  # If the frame is shorter than
-            if len(curr_frame) < frame_size:                 # expected, dismiss it...
-                continue
-
-            # Process the frame: apply windowing, compute spectrum, then extract MFCC bands
-            windowed_frame = window(curr_frame)
-            spectrum_res   = spectrum(windowed_frame)
-            mfcc_bands, _  = mfcc(spectrum_res)
-
-            # Save results for each frame.
-            mfcc_band_list.extend(mfcc_bands)
-
-        track.features['mfcc_avg_energy']  = np.mean(mfcc_band_list, axis=0)
-        track.features['mfcc_peak_energy'] = max(mfcc_band_list)
+        # Now acquire the statistical features for the frequency and save em' all to track.
+        track.features['pitch_hist'] = list(weighted_histogram)
+        track.features['pitch_mean'] = np.mean(freq, axis=0)
+        track.features['pitch_var']  = np.var(freq, axis=0)
 
 
     @staticmethod
@@ -117,24 +86,30 @@ class EssentiaAlgo:
         Furthermore, since the MFCC is acquired in this method,
         it can be modified for additional analysis of the tracks.
         """
-        key_extract    = es.Key()
-        mfcc           = es.MFCC()
-        hpcp           = es.HPCP()
-        window         = es.Windowing(type = 'hann')
-        spectrum       = es.Spectrum()
-        spec_peaks     = es.SpectralPeaks()
-        tristimulus    = es.Tristimulus()
-        chord_detect   = es.ChordsDetection()
-        pitch_salience = es.PitchSalience()
 
-        track_mono     = track.track_mono_44
-        frame_size     = 1024
+        # Define constants and extractors.
+        track_mono     = track.track_mono_44    # NOTE : Should conduct a test run in which
+        frame_size     = 1024                   # a sample rate of 16kHz is used instead...
+
+        key_extract    = load_essentia_algorithm("Key")
+        mfcc           = load_essentia_algorithm("MFCC")
+        hpcp           = load_essentia_algorithm("HPCP")
+        window         = load_essentia_algorithm("Windowing",type='hann')
+        spectrum       = load_essentia_algorithm("Spectrum" , size=frame_size)
+        dissonance     = load_essentia_algorithm("Dissonance")
+        spec_peaks     = load_essentia_algorithm("SpectralPeaks")
+        rollof_calc    = load_essentia_algorithm("RollOff")
+        tristimulus    = load_essentia_algorithm("Tristimulus")
+        chord_detect   = load_essentia_algorithm("ChordsDetection")
+        pitch_salience = load_essentia_algorithm("PitchSalience")
 
         # Apparently I'm supposed to gather these...
         pcp_list       = []
         key_list       = []
+        diss_list      = []
         pitch_list     = []
         timbre_list    = []
+        rollof_list    = []
         mfcc_band_list = []
 
         for ix in range(0, len(track_mono), frame_size):
@@ -149,30 +124,44 @@ class EssentiaAlgo:
             mfcc_bands, _    = mfcc(spectrum_res)
 
             freq, magnitudes = spec_peaks(spectrum_res)
-            pcp              = hpcp(freq, magnitudes)
+            pitch_profile    = hpcp(freq, magnitudes)
             timbre           = tristimulus(freq, magnitudes)
-            key, scale, _, _ = key_extract(pcp)
+            key, scale, _, _ = key_extract(pitch_profile)
             pitch            = pitch_salience(spectrum_res)
+            rollof           = rollof_calc(spectrum_res)
 
-            pcp_list.append(pcp)
-            key_list.append((key, scale))       # TODO : Refactor to a "".join(list)
-            pitch_list.append(pitch)            #        for more efficiency...
+            # If it is an empty frame, skip it...
+            if freq.size == 0 or magnitudes.size == 0:
+                continue  # Skip this frame if there are no spectral peaks
+
+            # Sort arrays in ascending order using NumPy
+            order             = np.argsort(freq)
+            sorted_freq       = freq[order]
+            sorted_magnitudes = magnitudes[order]
+            diss              = dissonance(sorted_freq, sorted_magnitudes)
+
+            # Append acquired values to lists
+            pcp_list.append(pitch_profile)
+            key_list.append((key, scale))       # TODO : Refactor to a "".join(list) for more efficiency
+            diss_list.append(diss)
+            pitch_list.append(pitch)
             timbre_list.append(timbre)
+            rollof_list.append(rollof)
             mfcc_band_list.extend(mfcc_bands)
 
 
         # Gather the top chords and keys...
-        chords_list, _ = chord_detect(pcp_list)
-        chord_counter  = Counter(chords_list)
-        key_counter    = Counter(key_list)
-        top_chords     = chord_counter.most_common(5)
-        top_keys       = key_counter.most_common(5)
+        chords, _      = chord_detect(pcp_list)
+        top_chords     = Counter(chords).most_common(5)
+        top_keys       = Counter(key_list).most_common(5)
 
         # Save track features
         track.features['most_common_chords'] = [chord for chord, _ in top_chords]
         track.features['most_common_keys']   = [f"{key}_{scale}" for ((key, scale), _) in top_keys]
         track.features['mfcc_peak_energy']   = max(mfcc_band_list)
         track.features['mfcc_avg_energy']    = np.mean(mfcc_band_list, axis=0)
-        track.features['pitch_salience']     = np.mean(pitch_list, axis=0)
+        track.features['pitch_salience']     = np.mean(pitch_list,     axis=0)
+        track.features['avg_dissonance']     = np.mean(diss_list,      axis=0)
+        track.features['avg_rollof']         = np.mean(rollof_list,    axis=0)
         track.features['tristimulus']        = tuple(np.mean(np.array(timbre_list), axis=0))
         # Btw tristimulus and timbre are interchaneable. But the 'timbre' feature is reserved for models
