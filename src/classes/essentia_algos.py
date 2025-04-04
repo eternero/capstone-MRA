@@ -9,9 +9,12 @@ existing Essentia Algorithms and take care of all the processing. This will make
 that has to be provided is a `Track` and the method takes care of the rest.
 """
 
+import gc
 from collections import Counter
+import torch
 import numpy as np
-from src.utils.parallel import get_pitch_tracker, load_essentia_algorithm
+from src.utils.parallel import load_essentia_algorithm
+from src.external.harmof0 import harmof0
 
 
 class EssentiaAlgo:
@@ -50,30 +53,22 @@ class EssentiaAlgo:
 
     @staticmethod
     def harmonic_f0(track_mono : np.ndarray, device : str = 'mps'):
-        """Not exactly an Essentia Algorithm, but this is the replacement (and improvement)
-        over CREPE. We're using HarmoF0 for pitch estimation and to acquire significant features
-        based on the track's pitch.
-        """
-        pitch_tracker              = get_pitch_tracker(device)
-        _, freq, _, activation_map = pitch_tracker.pred(track_mono, 16000)
+        pitch_tracker = harmof0.PitchTracker(device=device)
+        freq = None # Initialize
+        try:
+            with torch.no_grad():
+                # Only get freq if that's all we need for this test
+                _, freq, _, _ = pitch_tracker.pred(track_mono, 16000)
 
-        # First, we compute the weighted histogram from the activation map.
-        activation_vec_length   = activation_map.shape[1]
-        weighted_histogram      = np.zeros(activation_vec_length)
-
-        for activation_vec in activation_map:
-            weighted_histogram += activation_vec
-
-        # Once we're done summing all the activation vectors, normalize the histogram.
-        weighted_histogram     /= np.sum(weighted_histogram)
-
-        # Now acquire the statistical features for the frequency and save em' all.
-        features = {
-            'pitch_hist' : list(weighted_histogram),
-            'pitch_mean' : np.mean(freq, axis=0),
-            'pitch_var'  : np.var(freq, axis=0)
-        }
-        return features
+            # Simplified feature calculation
+            mean_pitch = float(np.mean(freq)) if freq is not None and freq.size > 0 else 0.0
+            features = {'pitch_mean': mean_pitch}
+            return features
+        finally:
+            del freq
+            # del activation_map # No longer exists here
+            del pitch_tracker
+            gc.collect()
 
 
     @staticmethod

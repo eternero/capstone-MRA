@@ -3,10 +3,9 @@ NOTE This code is still in development, trying out different features. Nonethele
 stick to essentia it might be best to join this with classes/essentia_models.py
 """
 
-from typing import TYPE_CHECKING, Union, List
+from typing import TYPE_CHECKING, List, Any
 import gc
 import numpy as np
-from typing import Any
 from essentia.standard import MonoLoader
 from src.utils.parallel import load_essentia_model
 from src.classes.essentia_algos import EssentiaAlgo
@@ -30,6 +29,7 @@ class FeatureExtractor:
     @staticmethod
     def handle_harmoF0(track_mono : np.ndarray,
                        harmo_task : HarmoF0Task) -> dict[str, Any]:
+        """TODO : Add docstring"""
 
         # Unpack task attributes
         harmonic_f0 = harmo_task.algorithm
@@ -115,7 +115,7 @@ class FeatureExtractor:
 
                 # If it isn't an Essentia Model, then it must be HarmoF0.
                 else:
-                    FeatureExtractor.handle_harmoF0(track_mono_16, essentia_obj)
+                    curr_features = FeatureExtractor.handle_harmoF0(track_mono_16, essentia_obj)
 
             # If it is neither of those, then it must be an Essentia Algoritm, which uses sr = 44kHz
             else:
