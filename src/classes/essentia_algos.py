@@ -13,6 +13,7 @@ import gc
 from collections import Counter
 import torch
 import numpy as np
+import essentia.standard as es
 from src.utils.parallel import load_essentia_algorithm
 from src.external.harmof0 import harmof0
 
@@ -53,22 +54,31 @@ class EssentiaAlgo:
 
     @staticmethod
     def harmonic_f0(track_mono : np.ndarray, device : str = 'mps'):
-        pitch_tracker = harmof0.PitchTracker(device=device)
-        freq = None # Initialize
-        try:
-            with torch.no_grad():
-                # Only get freq if that's all we need for this test
-                _, freq, _, _ = pitch_tracker.pred(track_mono, 16000)
+        """Not exactly an Essentia Algorithm, but this is the replacement (and improvement)
+        over CREPE. We're using HarmoF0 for pitch estimation and to acquire significant features
+        based on the track's pitch.
+        """
 
-            # Simplified feature calculation
-            mean_pitch = float(np.mean(freq)) if freq is not None and freq.size > 0 else 0.0
-            features = {'pitch_mean': mean_pitch}
-            return features
-        finally:
-            del freq
-            # del activation_map # No longer exists here
-            del pitch_tracker
-            gc.collect()
+        pitch_tracker              = harmof0.PitchTracker(device=device)
+        _, freq, _, activation_map = pitch_tracker.pred(track_mono, 16000)
+
+        # First, we compute the weighted histogram from the activation map.
+        activation_vec_length   = activation_map.shape[1]
+        weighted_histogram      = np.zeros(activation_vec_length)
+
+        for activation_vec in activation_map:
+            weighted_histogram += activation_vec
+
+        # Once we're done summing all the activation vectors, normalize the histogram.
+        weighted_histogram     /= np.sum(weighted_histogram)
+
+        # Now acquire the statistical features for the frequency and save em' all to track.
+        features = {
+                'pitch_hist' : list(weighted_histogram),
+                'pitch_mean' : np.mean(freq, axis=0),
+                'pitch_var'  : np.var(freq, axis=0)
+        }
+        return features
 
 
     @staticmethod
@@ -96,6 +106,21 @@ class EssentiaAlgo:
         tristimulus    = load_essentia_algorithm("Tristimulus")
         chord_detect   = load_essentia_algorithm("ChordsDetection")
         pitch_salience = load_essentia_algorithm("PitchSalience")
+
+        """
+        frame_size     = 1024
+        key_extract    = es.Key()
+        mfcc           = es.MFCC()
+        hpcp           = es.HPCP()
+        window         = es.Windowing(type='hann')
+        spectrum       = es.Spectrum(size=frame_size)
+        dissonance     = es.Dissonance()
+        spec_peaks     = es.SpectralPeaks()
+        rollof_calc    = es.RollOff()
+        tristimulus    = es.Tristimulus()
+        chord_detect   = es.ChordsDetection()
+        pitch_salience = es.PitchSalience()
+        """
 
         # Define result lists.
         pcp_list       = []

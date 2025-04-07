@@ -127,9 +127,8 @@ class FeatureExtractor:
             # At the end of every iteration, which handles an Essentia Task, update our results!
             all_features.update(curr_features)
 
-        # Clean up large audio arrays
-        del track_mono_16
-        del track_mono_44
-        gc.collect() # Hint to Python to release memory
 
-        return all_features
+        del track_mono_44       # Clean up large audio arrays and hint for garbage collection
+        gc.collect()            # I kept track_mono_16 since it will be reused for Harmonic_F0.
+
+        return all_features, track_mono_16

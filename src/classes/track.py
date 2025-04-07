@@ -4,7 +4,7 @@
 import os
 import time
 import random
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Callable
 
 import numpy as np
 import pandas as pd
@@ -139,21 +139,25 @@ class TrackPipeline:
 
 
     def run_pipeline(self, essentia_task_list : List[FeatureTask],
-                     only_track : bool = False) -> List[Track]:
+                     additional_tasks         : list[Callable] = None,
+                     only_track               : bool = False) -> List[Track]:
         """
         Processes all tracks in the following order:
-          1. Extract metadata
-          2. Extract Spotify features (requires metadata)
-          3. Run any additional steps (Essentia Models, Essentia Algorithms, etc.)
+          1. Extract metadata and spotify api features
+          2. Extracts Essentia features, whether it be from Models or Algorithms.
+          3. Handles any additional tasks to finsih off.
+
+        The first two steps are done concurrently, while the 'additioinal tasks' are simply
+        any tasks which could not be executed concurrently. For now, this only applies to HarmoF0.
 
         Args:
-            essentia_models_dict : This is a dictionary that contains pairs of
-                        `{Essentia Embeddings : List[Essentia Model]}`
-
-                This is because multiple models can depend on the same embeddings,
-                and containing them as such provides an efficient approach..
-            only_track : Determines whether only the Track Metadata will be extracted.
-                         Defaults to False. If True, no models or algorithms will run.
+            essentia_task_list : A list of `FeatureTask` objects. These can be either Essentia
+                                 Models or Algorithms.
+            additional_tracks  : A list of additional tasks which cannot be run concurrently, these
+                                 must all take `track_mono` as their input and return a dictionary
+                                 of the features which were computed.
+            only_track         : Determines whether only the Track Metadata will be extracted.
+                                 Defaults to False. If True, no other tasks will run.
         """
 
         # -----------------------------------------------------------------------------------------
@@ -177,25 +181,36 @@ class TrackPipeline:
         # -----------------------------------------------------------------------------------------
         # Step 2 : Essentia Models Extraction
         # -----------------------------------------------------------------------------------------
-        start  = time.time()
-
         if not only_track:
             track_paths  =  [track.track_path for track in self.track_list]
             feat_results = run_in_parallel(FeatureExtractor.retrieve_all_essentia_features,
                                         track_paths,
                                         essentia_task_list,
-                                        num_workers=8,
+                                        num_workers=10,
                                         executor_type="process",
                         )
 
-            for track, features_dict in zip(self.track_list, feat_results):
-                if features_dict is not None:
-                    track.update_features(features_dict)
+            for track, extracted_features in zip(self.track_list, feat_results):
+                if extracted_features is not None:
+                    track_features, track_mono_16 = extracted_features
+                    track.update_features(track_features)
+                    track.track_mono_16 = track_mono_16
 
                 else:   # There are no logs right now lol, will have to change that
                     print(f"No features returned for track: {track.track_path}. Check worker logs.")
 
-        print(f"Executed in {time.time() - start}s")
+
+        # -----------------------------------------------------------------------------------------
+        # Step 3 : Handle any tasks that can't be parallelized. Must take `track_mono` as input.
+        # -----------------------------------------------------------------------------------------
+        if additional_tasks is None:
+            additional_tasks = []
+
+        for task in additional_tasks:
+            for track in self.track_list:
+                task_features = task(track.track_mono_16)
+                track.update_features(task_features)
+
         return self.track_list
 
 

@@ -1,14 +1,11 @@
 """..."""
 from src.classes.track import TrackPipeline
 from src.classes.essentia_algos import EssentiaAlgo
-from src.classes.essentia_containers import (EssentiaAlgorithmTask,
-                                             EssentiaModelTask,
-                                             HarmoF0Task
-                                            )
 import src.classes.essentia_models as essentia_models
+from src.classes.essentia_containers import EssentiaAlgorithmTask, EssentiaModelTask
 
 if __name__ == '__main__':
-    AUDIO_PATH = "src/audio/testing_dataset_flac"
+    AUDIO_PATH = "src/audio/dataset_flac_2"
     track_pipeline = TrackPipeline(AUDIO_PATH)
 
     # Create our Tasks before running it...
@@ -36,17 +33,17 @@ if __name__ == '__main__':
                                                            inference_models=essentia_discogs_effnet_models)
 
     essentia_algorithms_task           = EssentiaAlgorithmTask(algorithms=[
-                                                                EssentiaAlgo.harmonic_f0,
                                                                 EssentiaAlgo.el_monstruo,
                                                                 EssentiaAlgo.get_bpm_re2013,
                                                                 EssentiaAlgo.get_energy,
-                                                                # EssentiaAlgo.get_loudness_ebu_r128
+                                                                EssentiaAlgo.get_loudness_ebu_r128
                                                                ])
 
-    harmof0_task                       = HarmoF0Task()
-    essentia_task_list                 = [essentia_algorithms_task, harmof0_task]
+    additional_tasks                   = EssentiaAlgo.harmonic_f0
+    essentia_task_list                 = [essentia_algorithms_task, essentia_discogs_effnet_task]
 
-    track_list = track_pipeline.run_pipeline(essentia_task_list=essentia_task_list)
-    track_df   = track_pipeline.get_track_dataframe()
-    track_df.to_csv('datasets/04_04_25_refactored_dataset.csv', index=False)
+    track_list = track_pipeline.run_pipeline(essentia_task_list = essentia_task_list,
+                                             additional_tasks   = additional_tasks)
+
+
 
