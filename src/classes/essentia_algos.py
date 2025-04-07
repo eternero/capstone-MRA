@@ -122,7 +122,9 @@ class EssentiaAlgo:
         hpcp           = es.HPCP()
         window         = es.Windowing(type = 'hann')
         spectrum       = es.Spectrum()
+        dissonance     = es.Dissonance()
         spec_peaks     = es.SpectralPeaks()
+        rollof_calc    = es.RollOff()
         tristimulus    = es.Tristimulus()
         chord_detect   = es.ChordsDetection()
         pitch_salience = es.PitchSalience()
@@ -133,8 +135,10 @@ class EssentiaAlgo:
         # Apparently I'm supposed to gather these...
         pcp_list       = []
         key_list       = []
+        diss_list      = []
         pitch_list     = []
         timbre_list    = []
+        rollof_list    = []
         mfcc_band_list = []
 
         for ix in range(0, len(track_mono), frame_size):
@@ -153,11 +157,25 @@ class EssentiaAlgo:
             timbre           = tristimulus(freq, magnitudes)
             key, scale, _, _ = key_extract(pcp)
             pitch            = pitch_salience(spectrum_res)
+            rollof           = rollof_calc(spectrum_res)
+
+
+            # Skip this frame if there are no spectral peaks or if it's empty.
+            if freq.size == 0 or magnitudes.size == 0:
+                continue
+
+            # Sort arrays in ascending order using NumPy
+            order             = np.argsort(freq)
+            sorted_freq       = freq[order]
+            sorted_magnitudes = magnitudes[order]
+            diss              = dissonance(sorted_freq, sorted_magnitudes)
 
             pcp_list.append(pcp)
-            key_list.append((key, scale))       # TODO : Refactor to a "".join(list)
-            pitch_list.append(pitch)            #        for more efficiency...
+            key_list.append((key, scale))
+            diss_list.append(diss)
+            pitch_list.append(pitch)
             timbre_list.append(timbre)
+            rollof_list.append(rollof)
             mfcc_band_list.extend(mfcc_bands)
 
 
