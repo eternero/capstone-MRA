@@ -1,7 +1,5 @@
 """..."""
-import os
 import re
-import time
 import json
 import unicodedata
 import pandas as pd
@@ -83,3 +81,15 @@ def process_name(name: str) -> str:
 
     return name
 
+# -------------------------------------------------------------------------------------------------
+# Dataframe Alterations
+# -------------------------------------------------------------------------------------------------
+
+def concat_dfs(csv_paths : list[str]) -> pd.DataFrame:
+    """Stupid wrapper for pandas concat"""
+    dataframes  = []
+    for csv in csv_paths:
+        curr_df = pd.read_csv(csv)
+        dataframes.append(curr_df)
+
+    return pd.concat(dataframes)
