@@ -9,11 +9,8 @@ existing Essentia Algorithms and take care of all the processing. This will make
 that has to be provided is a `Track` and the method takes care of the rest.
 """
 
-import gc
 from collections import Counter
-import torch
 import numpy as np
-import essentia.standard as es
 from src.utils.parallel import load_essentia_algorithm
 from src.external.harmof0 import harmof0
 
