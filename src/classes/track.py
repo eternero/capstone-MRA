@@ -4,7 +4,7 @@
 import os
 import time
 import random
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Callable
 
 import numpy as np
 import pandas as pd
@@ -15,7 +15,7 @@ from requests.exceptions import HTTPError, Timeout
 
 from src.utils.parallel import run_in_parallel
 from src.extractors.metadata import MetadataExtractor
-from src.classes.essentia_models import EssentiaModel
+from src.classes.essentia_containers import FeatureTask
 from src.extractors.audio_features import FeatureExtractor
 from src.extractors.spotify_api import SpotifyAPI, request_access_token
 
@@ -40,7 +40,6 @@ class Track:
 
         features   : The dictionary which stores the features that have been acquired for the track
         metadata   : The metadata of the track. Includes track name, album name, artist name etc...
-        metadata_extractor : The instance of `MetadataExtractor` used to acquire the metadata.
 
     TODO : Missing implementation of SpotifyAPI here, work on it.
     """
@@ -48,7 +47,6 @@ class Track:
         self.track_path    = track_path
         self.track_mono_16 = None
         self.track_mono_44 = None
-
 
         self.features      : Dict[str, Any] = {}
         self.metadata      : Dict[str, Any] = {}
@@ -90,13 +88,6 @@ class TrackPipeline:
         self.sample_rate             = sample_rate
         self.track_list: List[Track] = []
 
-        # Define extractors to help ourselves.
-        self.spotify_api_extractor   = SpotifyAPI()
-        self.metadata_extractor      = MetadataExtractor()
-        self.audio_feature_extractor = FeatureExtractor()
-
-        # NOTE : Make it so that the `FeatureExtractor` class works similar
-        # to these previous two which work on a single track, rather than a list.
 
     def _get_metadata_and_spotify(self, track_path : Track, access_token : str):
         """Acquires the metadata and Spotify API features for a single track.
@@ -107,9 +98,8 @@ class TrackPipeline:
         """
         # Initialize a `Track` object.
         track    = Track(track_path=track_path)
-        metadata = self.metadata_extractor.extract(track.track_path)
+        metadata = MetadataExtractor.extract(track.track_path)
         track.update_metadata(metadata)
-
 
         # Once we've got the metadata, we can proceed to get the Spotify API Features
         track_name       = track.metadata['title']
@@ -123,13 +113,12 @@ class TrackPipeline:
         base_delay  = 1     # initial delay in seconds.
         retries     = 0     # used to track number of retries.
 
+
         # Use exponential backoff until request to Spotify API is successful.
         while True:
             try:
-                spotify_features = self.spotify_api_extractor.get_spotify_features(track_artist,
-                                                                                   track_name,
-                                                                                   track_album,
-                                                                                   access_token)
+                spotify_features = SpotifyAPI.get_spotify_features(track_artist,track_name,
+                                                                   track_album,access_token)
                 track.update_features(spotify_features)
                 return track
 
@@ -148,22 +137,27 @@ class TrackPipeline:
                 print(f"Retrying in {delay:.2f} seconds...")
                 time.sleep(delay)
 
-    def run_pipeline(self, essentia_models_dict : Dict[EssentiaModel, List[EssentiaModel]],
-                     only_track : bool = False) -> List[Track]:
+
+    def run_pipeline(self, essentia_task_list : List[FeatureTask],
+                     additional_tasks         : list[Callable] = None,
+                     only_track               : bool = False) -> List[Track]:
         """
         Processes all tracks in the following order:
-          1. Extract metadata
-          2. Extract Spotify features (requires metadata)
-          3. Run any additional steps (Essentia Models, Essentia Algorithms, etc.)
+          1. Extract metadata and spotify api features
+          2. Extracts Essentia features, whether it be from Models or Algorithms.
+          3. Handles any additional tasks to finsih off.
+
+        The first two steps are done concurrently, while the 'additioinal tasks' are simply
+        any tasks which could not be executed concurrently. For now, this only applies to HarmoF0.
 
         Args:
-            essentia_models_dict : This is a dictionary that contains pairs of
-                        `{Essentia Embeddings : List[Essentia Model]}`
-
-                This is because multiple models can depend on the same embeddings,
-                and containing them as such provides an efficient approach..
-            only_track : Determines whether only the Track Metadata will be extracted.
-                         Defaults to False. If True, no models or algorithms will run.
+            essentia_task_list : A list of `FeatureTask` objects. These can be either Essentia
+                                 Models or Algorithms.
+            additional_tracks  : A list of additional tasks which cannot be run concurrently, these
+                                 must all take `track_mono` as their input and return a dictionary
+                                 of the features which were computed.
+            only_track         : Determines whether only the Track Metadata will be extracted.
+                                 Defaults to False. If True, no other tasks will run.
         """
 
         # -----------------------------------------------------------------------------------------
@@ -187,17 +181,36 @@ class TrackPipeline:
         # -----------------------------------------------------------------------------------------
         # Step 2 : Essentia Models Extraction
         # -----------------------------------------------------------------------------------------
-        start  = time.time()
-
         if not only_track:
-            result = run_in_parallel(self.audio_feature_extractor.retrieve_all_essentia_features,
-                                        self.track_list,
-                                        essentia_models_dict,
-                                        executor_type="process"
-                    )
-            self.track_list = [track for track in result if track is not None]
+            track_paths  =  [track.track_path for track in self.track_list]
+            feat_results = run_in_parallel(FeatureExtractor.retrieve_all_essentia_features,
+                                        track_paths,
+                                        essentia_task_list,
+                                        num_workers=10,
+                                        executor_type="process",
+                        )
 
-        print(f"Executed in {time.time() - start}s")
+            for track, extracted_features in zip(self.track_list, feat_results):
+                if extracted_features is not None:
+                    track_features, track_mono_16 = extracted_features
+                    track.update_features(track_features)
+                    track.track_mono_16 = track_mono_16
+
+                else:   # There are no logs right now lol, will have to change that
+                    print(f"No features returned for track: {track.track_path}. Check worker logs.")
+
+
+        # -----------------------------------------------------------------------------------------
+        # Step 3 : Handle any tasks that can't be parallelized. Must take `track_mono` as input.
+        # -----------------------------------------------------------------------------------------
+        if additional_tasks is None:
+            additional_tasks = []
+
+        for task in additional_tasks:
+            for track in self.track_list:
+                task_features = task(track.track_mono_16)
+                track.update_features(task_features)
+
         return self.track_list
 
 

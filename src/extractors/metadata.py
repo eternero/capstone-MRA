@@ -45,6 +45,25 @@ class MetadataExtractor:
         field = re.sub(r'\s+', ' ', field).strip()
         return field
 
+    @staticmethod
+    def extract_year(date_str):
+        # If it's already a valid year
+        if re.fullmatch(r"\d{4}", date_str):
+            return date_str
+
+        # Match formats like YYYY-XX-XX
+        match1 = re.match(r"^(\d{4})-\d{2}-\d{2}$", date_str)
+        if match1:
+            return match1.group(1)
+
+        # Match formats like XX-XX-YYYY
+        match2 = re.match(r"^\d{2}-\d{2}-(\d{4})$", date_str)
+        if match2:
+            return match2.group(1)
+
+        # If none of the formats match, return None (or alternatively raise an error)
+        return None
+
 
     @staticmethod
     def _clean_metadata(metadata : dict[str]) -> dict[str]:
@@ -117,6 +136,7 @@ class MetadataExtractor:
             "release_year" : MetadataExtractor._process_field(audio.get("date") or audio.get("year"))
         }
 
+        metadata['release_year'] = MetadataExtractor.extract_year(metadata['release_year'])
         return MetadataExtractor._clean_metadata(metadata)
 
 

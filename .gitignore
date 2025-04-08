@@ -6,6 +6,7 @@ src/.env
 .cache*
 **.csv
 **.log
+**.bin
 
 # Ignore all __pycache__ directories recursively
 **/__pycache__/*
