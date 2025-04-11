@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd  # Add this for nice table formatting
 from src.classes.track import Track, TrackPipeline
-from src.classes.essentia_algos import EssentiaAlgo as es
+from src.classes.essentia_algos import EssentiaAlgo
+from src.classes.essentia_containers import EssentiaAlgorithmTask
 
 # Pathnames of freaking songs
 track_paths = [
@@ -15,15 +16,17 @@ audio_path = "/Users/jorge/soulseek-music"
 
 # Algorithms to test :D
 feature_extractors = [
-    es.get_spectral_centroid_time,
-    es.get_spectral_rolloff,
-    es.get_spectral_contrast,
-    es.get_hfc,
-    es.get_flux,
-    es.get_flatness_db,
-    es.get_energy_band_ratio,
-    # es.get_spectral_peaks
+    EssentiaAlgo.get_spectral_centroid_time,
+    EssentiaAlgo.get_spectral_rolloff,
+    EssentiaAlgo.get_spectral_contrast,
+    EssentiaAlgo.get_hfc,
+    EssentiaAlgo.get_flux,
+    EssentiaAlgo.get_flatness_db,
+    EssentiaAlgo.get_energy_band_ratio,
+    EssentiaAlgo.get_spectral_peaks
 ]
+
+essentia_algoritms_task = EssentiaAlgorithmTask(feature_extractors)
 
 all_results = {}
 
@@ -55,20 +58,8 @@ if __name__ == "__main__":
 
     # df.to_csv('track_features_summary.csv')
 
-    essentia_algoritms = {
-        "algorithms": [
-            es.get_spectral_centroid_time,
-            es.get_spectral_rolloff,
-            es.get_spectral_contrast,
-            es.get_hfc,
-            es.get_flux,
-            es.get_flatness_db,
-            es.get_energy_band_ratio,
-            # es.get_spectral_peaks
-        ]
-    }
 
     track_pipeline = TrackPipeline(audio_path)
-    track_pipeline.run_pipeline(essentia_models_dict=essentia_algoritms)
+    track_pipeline.run_pipeline(essentia_task_list=[essentia_algoritms_task])
     track_df = track_pipeline.get_track_dataframe()
     track_df.to_csv("track_features_summary_pl.csv", index=True)

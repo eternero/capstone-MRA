@@ -13,11 +13,9 @@ from collections import Counter
 import numpy as np
 from src.utils.parallel import load_essentia_algorithm
 from src.external.harmof0 import harmof0
+import essentia.standard as es
 
 
-# To shut the linter off 
-from typing import Any
-es: Any = _es
 class EssentiaAlgo:
     """Just read the file docstring."""
 
@@ -81,6 +79,259 @@ class EssentiaAlgo:
         return features
 
 
+    @staticmethod
+    def get_spectral_centroid_time(track_mono : np.ndarray):
+        """Computes the spectral centroid across the track using SpectralCentroidTime"""
+        window   = es.Windowing(type='hann') 
+        spectrum = es.Spectrum()             
+        centroid = es.SpectralCentroidTime() 
+
+        frame_size = 1024
+        centroids = []
+
+        assert track_mono is not None, "track_mono must not be None"
+        for i in range(0, len(track_mono), frame_size):
+            frame = track_mono[i: i + frame_size]
+            if len(frame) < frame_size:
+                continue
+            windowed    = window(frame)
+            spec        = spectrum(windowed)
+            centroids.append(centroid(spec))
+
+        # Saving statistics
+        centroids = np.array(centroids)
+        features = {
+            'spectral_centroid_mean':   np.mean(centroids),
+            'spectral_centroid_std' :   np.std(centroids),
+            'spectral_centroid_max' :   np.max(centroids),
+        }
+        return features
+
+    @staticmethod
+    def get_spectral_rolloff(track_mono : np.ndarray):
+        """Computes the spectral rolloff (frequency below which 85% of energy lies"""
+        window      = es.Windowing(type='hann') 
+        spectrum    = es.Spectrum()             
+        rolloff     = es.RollOff()              
+
+        frame_size  = 1024
+        rolloffs     = []
+
+        for i in range(0, len(track_mono), frame_size):
+            frame = track_mono[i: i + frame_size]
+            if len(frame) < frame_size:
+                continue
+            windowed = window(frame)
+            spec = spectrum(windowed)
+            rolloffs.append(rolloff(spec))
+        
+        rolloffs = np.array(rolloffs)
+        feature = {    
+            'rolloff_mean' : np.mean(rolloffs),
+            'rolloff_std' : np.std(rolloffs),
+            'rolloff_max' : np.max(rolloffs),
+        }
+        return feature
+
+    @staticmethod
+    def get_spectral_contrast(track_mono : np.ndarray):
+        """Computes Spectral Contrast across several frequency bands"""
+        frame_size  = 1024
+        window      = es.Windowing(type='hann') 
+        spectrum    = es.Spectrum()             
+        # Adding the framme_size parameter since it defaults to 2048 and gives an error
+        contrast    = es.SpectralContrast(frameSize=frame_size)              
+
+
+        contrasts   = []
+        valleys     = []
+
+        for i in range(0, len(track_mono), frame_size):
+            frame = track_mono[i: i + frame_size]
+            if(len(frame) < frame_size):
+                continue
+
+            windowed    = window(frame)
+            spec        = spectrum(windowed)
+            contrast_values, contrast_valleys = contrast(spec)
+            contrasts.append(contrast_values)
+            valleys.append(contrast_valleys)
+
+        contrasts = np.array(contrasts)
+        valleys   = np.array(valleys)
+        feature = {
+            'spectral_contrast_mean' : np.mean(contrasts, axis=0),
+            'spectral_contrast_std'  : np.std(contrasts, axis=0),
+            'spectral_valley_mean'   : np.mean(valleys, axis=0),
+            'spectral_valley_std'    : np.std(valleys, axis=0)
+        }
+        return feature
+
+    @staticmethod
+    def get_hfc(track_mono : np.ndarray):
+        """Compute the High Frequency Content of the track."""
+        window   = es.Windowing(type='hann')
+        spectrum = es.Spectrum()
+        hfc      = es.HFC()
+
+        frame_size = 1024
+        hfc_vals   = []
+
+        for i in range(0, len(track_mono), frame_size):
+            frame = track_mono[i: i + frame_size]
+            if len(frame) < frame_size:
+                continue
+            windowed = window(frame)
+            spec     = spectrum(windowed)
+            hfc_vals.append(hfc(spec))
+
+        hfc_vals = np.array(hfc_vals)
+        feature = {
+            'hfc_mean' : np.mean(hfc_vals),
+            'hfc_std'  : np.std(hfc_vals)
+        }
+        return feature
+
+    @staticmethod
+    def get_flux(track_mono : np.ndarray):
+        """Compute spectral flux over the track."""
+        window   = es.Windowing(type='hann')
+        spectrum = es.Spectrum()
+        flux     = es.Flux()
+
+        frame_size = 1024
+        flux_vals  = []
+
+        for i in range(0, len(track_mono), frame_size):
+            frame = track_mono[i: i + frame_size]
+            if len(frame) < frame_size:
+                continue
+            windowed = window(frame)
+            spec     = spectrum(windowed)
+            flux_values = flux(spec)
+            flux_vals.append(flux_values)
+
+
+        flux_vals = np.array(flux_vals)
+        feature = {
+            'flux_mean' : np.mean(flux_vals),
+            'flux_std'  : np.std(flux_vals)
+        }
+        return feature
+    
+    @staticmethod
+    def get_flatness_db(track_mono : np.ndarray):
+        """Compute spectral flatness in dB."""
+        window    = es.Windowing(type='hann')
+        spectrum  = es.Spectrum()
+        flatness  = es.FlatnessDB()
+
+        frame_size = 1024
+        flatness_vals = []
+
+        for i in range(0, len(track_mono), frame_size):
+            frame = track_mono[i:i+frame_size]
+            if len(frame) < frame_size:
+                continue
+            windowed = window(frame)
+            spec     = spectrum(windowed)
+            flatness_vals.append(flatness(spec))
+
+        flatness_vals = np.array(flatness_vals)
+        feature = {
+            'flatness_db_mean'  : np.mean(flatness_vals),
+            'flatness_db_std'   : np.std(flatness_vals)
+        }
+        return feature
+
+    @staticmethod
+    def get_energy_band_ratio(track_mono : np.ndarray):
+        """Compute energy band ratios for defined frequencies."""
+
+
+        window     = es.Windowing(type='hann')
+        spectrum   = es.Spectrum()
+
+        frame_size = 1024
+
+        band_ratios = []
+
+        # TODO Maybe change 22,050 to 16,000 if there's tracks with lower freq
+        freq_bands = [(0, 60), (60, 250),
+                      (250, 500), (500, 2000), 
+                      (2000, 4000), (4000, 6000),
+                      (6000, 22050)]
+        
+        band_names = ['sub_bass', 'bass', 
+                      'lower_midrange', 'midrange', 
+                      'higher_midrange', 'presence', 
+                      'brilliance']
+
+        # Create an instance per band
+        energy_band = [
+            es.EnergyBandRatio(
+                sampleRate=44100,
+                startFrequency=start,
+                stopFrequency=stop
+            )
+            for (start, stop) in freq_bands]
+
+
+        for i in range(0, len(track_mono), frame_size):
+            frame = track_mono[i: i + frame_size]
+            if len(frame) < frame_size:
+                continue
+            windowed = window(frame)
+            spec     = spectrum(windowed)
+            
+            ratios = [band_algo(spec) for band_algo in energy_band]
+            band_ratios.append(ratios)
+
+        ratios_array = np.array(band_ratios)
+        features = {}
+        for idx, name in enumerate(band_names):
+            features[f'energy_ratio_{name}_mean'] = np.nanmean(ratios_array[:, idx])
+            features[f'energy_ratio_{name}_std']  = np.nanstd(ratios_array[:, idx])
+
+        return features
+    
+    @staticmethod
+    def get_spectral_peaks(track_mono : np.ndarray):
+        """Extract spectral peaks (frequencies and magnitudes)."""
+        window      = es.Windowing(type='blackmanharris92')
+        spectrum    = es.Spectrum()
+        spec_peaks  = es.SpectralPeaks()
+
+        frame_size = 1024
+        peak_counts, freqs, mags = [], [], []
+
+        for i in range(0, len(track_mono), frame_size):
+            frame = track_mono[i: i + frame_size]
+            if len(frame) < frame_size:
+                continue
+            windowed = window(frame)
+            spec     = spectrum(windowed)
+
+            frequency, magnitude = spec_peaks(spec)
+            peak_counts.append(len(frequency))
+            if len(frequency) > 0:
+                freqs.extend(frequency)
+                mags.extend(magnitude)
+
+        if freqs:
+            features = {
+                'spectral_peaks_avg_freq': np.mean(freqs),
+                'spectral_peaks_avg_mag' : np.mean(mags),
+                'spectral_peaks_count'   : np.mean(peak_counts)
+            }
+        else:
+            features = {
+                'spectral_peaks_avg_freq': 0,
+                'spectral_peaks_avg_mag' : 0,
+                'spectral_peaks_count'   : 0
+            }
+        return features
+    
     @staticmethod
     def el_monstruo(track_mono : np.ndarray):
         """Extracts the following features :
