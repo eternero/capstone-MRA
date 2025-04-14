@@ -4,13 +4,13 @@
 import os
 import time
 import random
+from dataclasses import dataclass, field
 from typing import Any, List, Dict, Callable
 
+import essentia
 import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
-import essentia
-from essentia.standard import MonoLoader
 from requests.exceptions import HTTPError, Timeout
 
 from src.utils.parallel import run_in_parallel
@@ -24,15 +24,12 @@ essentia.log.infoActive = False
 essentia.log.warningActive = False
 
 
+@dataclass
 class Track:
     """
     The Track object should encapsulate all of the necessary elements that we've determined to be
     pertinent to describing and analyzing a song. This includes metadata, features extracted using
-    essentia, and other information acquired from the SpotifyAPI (TODO).
-
-    This class implements the usage of others such as the MetadataExtractor, SpotifyAPI,
-    EssentiaModels and FeatureExtractor. The last two essentially work towards the same thing,
-    acquisition of features through essentia - and the first two are quite self-explanatory.
+    Essentia, and other information acquired from the SpotifyAPI.
 
     Attributes:
         track_path : The path which points to the location of the song file.
@@ -40,39 +37,13 @@ class Track:
 
         features   : The dictionary which stores the features that have been acquired for the track
         metadata   : The metadata of the track. Includes track name, album name, artist name etc...
-
-    TODO : Missing implementation of SpotifyAPI here, work on it.
     """
-    def __init__(self, track_path : str):
-        self.track_path    = track_path
-        self.track_mono_16 = None
-        self.track_mono_44 = None
+    track_path    : str
+    track_mono_16 : np.ndarray     = field(default_factory=list)
+    track_mono_44 : np.ndarray     = field(default_factory=list)
 
-        self.features      : Dict[str, Any] = {}
-        self.metadata      : Dict[str, Any] = {}
-
-    def update_features(self, new_features: Dict[str, Any]) -> None:
-        """_summary_
-
-        Args:
-            new_features (Dict[str, Any]): _description_
-        """
-        self.features.update(new_features)
-
-    def update_metadata(self, new_metadata: Dict[str, Any]) -> None:
-        """_summary_
-
-        Args:
-            new_metadata (Dict[str, Any]): _description_
-        """
-        self.metadata = new_metadata
-
-    def get_track_mono(self, sample_rate : int) -> np.array:
-        """Wrapper for the MonoLoader method."""
-        return MonoLoader(filename        = self.track_path,
-                          sampleRate      = sample_rate,
-                          resampleQuality = 0)()
-
+    features      : Dict[str, Any] = field(default_factory=dict)
+    metadata      : Dict[str, Any] = field(default_factory=dict)
 
 
 class TrackPipeline:
@@ -99,7 +70,7 @@ class TrackPipeline:
         # Initialize a `Track` object.
         track    = Track(track_path=track_path)
         metadata = MetadataExtractor.extract(track.track_path)
-        track.update_metadata(metadata)
+        track.metadata.update(metadata)
 
         # Once we've got the metadata, we can proceed to get the Spotify API Features
         track_name       = track.metadata['title']
@@ -119,7 +90,7 @@ class TrackPipeline:
             try:
                 spotify_features = SpotifyAPI.get_spotify_features(track_artist,track_name,
                                                                    track_album,access_token)
-                track.update_features(spotify_features)
+                track.features.update(spotify_features)
                 return track
 
             # If we catch an error, we retry and delay our calls until we find success.
@@ -193,7 +164,7 @@ class TrackPipeline:
             for track, extracted_features in zip(self.track_list, feat_results):
                 if extracted_features is not None:
                     track_features, track_mono_16 = extracted_features
-                    track.update_features(track_features)
+                    track.features.update(track_features)
                     track.track_mono_16 = track_mono_16
 
                 else:   # There are no logs right now lol, will have to change that
@@ -209,7 +180,7 @@ class TrackPipeline:
         for task in additional_tasks:
             for track in self.track_list:
                 task_features = task(track.track_mono_16)
-                track.update_features(task_features)
+                track.features.update(task_features)
 
         return self.track_list
 
