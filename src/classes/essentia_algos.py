@@ -77,6 +77,72 @@ class EssentiaAlgo:
         }
         return features
 
+    @staticmethod
+    def mfcc_renewed(track_mono  : np.ndarray,
+                     frame_size  : int = 2048,
+                     num_bands   : int = 40,
+                     num_coeff   : int = 13):
+        """This method uses Essentia's MFCC Algorithm to create meaningful features.
+
+        The parameters used for this mainly regard the MFCC function, for example we can change
+        the number of bands and mel-frequency cepstrum coefficients (mfcc) returned by the MFCC
+        Algorithm.
+
+        It is important to mention that we're using a 50% overlap for windows as seen with the usage
+        of `half_frame` steps as we iterate. This is done following the procedures of Mahieux et al. in
+
+            _"Proceedings of the 12th International Society for Music Information Retrieval Conference"_
+
+        Args:
+            track_path : The string pointing to the path of the track that we'll process.
+            frame_size : The frame size used for our Windows & acquisition of Spectrum. Defaults to 2048
+            num_bands  : The number of mel bands to be returned by MFCC(). Defaults to 40
+            num_coeff  : The number of mfccs to be returned by MFCC(). Defaults to 13
+        """
+
+        # Define basics
+        half_frame      = frame_size // 2
+        band_list       = []
+        mfcc_list       = []
+
+
+        # Define Essentia Stuff
+        windowing      = load_essentia_algorithm("Windowing",type='hann')
+        spec_extractor = load_essentia_algorithm("Spectrum" , size=frame_size)
+        mfcc_extractor = load_essentia_algorithm("MFCC", numberBands = num_bands,
+                                                numberCoefficients = num_coeff)
+
+
+        for ix in range(0, len(track_mono), half_frame):    # Use half-frames as our step so that we can
+            curr_frame = track_mono[ix : ix + frame_size]   # Have a 50% overlap fr all of the frames.
+
+            # Don't process incomplete frames.
+            if len(curr_frame) < frame_size:
+                continue
+
+            window_frame = windowing(curr_frame)
+            spectrum     = spec_extractor(window_frame)
+            bands, mfcc  = mfcc_extractor(spectrum)
+
+            band_list.append(bands)
+            mfcc_list.append(mfcc)
+
+
+        # Once we're out of the loop, gather all our features.
+        bands_array = np.vstack(band_list)
+        mfcc_array  = np.vstack(mfcc_list)
+
+
+        features = {
+            'mfcc_mean' : list(np.mean(mfcc_array, axis=0)),
+            'mfcc_std'  : list(np.std(mfcc_array, axis=0)),
+
+            'band_mean' : list(np.mean(bands_array, axis=0)),
+            'band_std'  : list(np.std(bands_array, axis=0)),
+        }
+
+        return features
+
 
     @staticmethod
     def el_monstruo(track_mono : np.ndarray):
