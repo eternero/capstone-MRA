@@ -19,6 +19,8 @@ from src.classes.essentia_containers import FeatureTask
 from src.extractors.audio_features import FeatureExtractor
 from src.extractors.spotify_api import SpotifyAPI, request_access_token
 
+from src.utils.execution_timer import timing_decorator
+
 # DISABLE LOGGING. ANNOYING!
 essentia.log.infoActive = False
 essentia.log.warningActive = False
@@ -137,7 +139,7 @@ class TrackPipeline:
                 print(f"Retrying in {delay:.2f} seconds...")
                 time.sleep(delay)
 
-
+    @timing_decorator
     def run_pipeline(self, essentia_task_list : List[FeatureTask],
                      additional_tasks         : list[Callable] = None,
                      only_track               : bool = False) -> List[Track]:

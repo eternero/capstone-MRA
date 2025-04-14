@@ -81,7 +81,25 @@ class EssentiaAlgo:
 
     @staticmethod
     def get_spectral_centroid_time(track_mono : np.ndarray):
-        """Computes the spectral centroid across the track using SpectralCentroidTime"""
+        """
+        Computes the spectral centroid of the audio over time.
+
+        The spectral centroid indicates the "brightness" of the sound,
+        representing the center of mass of the spectrum. Higher values suggest 
+        brighter, sharper sounds; lower values indicates darker, bass-heavy sounds
+
+        Usefulness:
+            Helps distinguish bright, sharp tracks (like electronic or pop) from darker,
+            bass-heavy sounds (like hip-hop or reggaeton), contributing to mood and genre recognition.
+        
+        Inputs:
+            track_mono (np.ndarray): Mono audio signal of the track
+
+        Outputs:
+            - spectral_centroid_mean: Mean spectral centroid (Hz).
+            - spectral_centroid_std: Standard deviation of spectral centroid.
+            - spectral_centroid_max: Maximum spectral centroid value.
+        """
         window   = es.Windowing(type='hann') 
         spectrum = es.Spectrum()             
         centroid = es.SpectralCentroidTime() 
@@ -109,12 +127,31 @@ class EssentiaAlgo:
 
     @staticmethod
     def get_spectral_rolloff(track_mono : np.ndarray):
-        """Computes the spectral rolloff (frequency below which 85% of energy lies"""
+        """
+        Computes the spectral rolloff  of a track
+
+        Spectral rolloff calculates the frequency below a given percentage (default 85%)
+        of the total spectral energy. Higher values suggest bright, noisy sounds; 
+        lower values point to bass-heavy tracks
+    
+        Usefulness:
+            Shows the energy distribution under a certain point, pretty useful when a song 
+            is dark but it has some beats that makes it appear that is kinda bright.
+            It shows where the energy is mostly under that threshold.
+
+        Inputs:
+            track_mono (np.ndarray): Mono audio signal of the track
+
+        Outputs:
+            - rolloff_mean: Mean roll-off frequency (Hz).
+            - rolloff_std: Standard deviation of roll-off frequency.
+            - rolloff_max: Maximum roll-off frequency.
+        """
         window      = es.Windowing(type='hann') 
         spectrum    = es.Spectrum()             
         rolloff     = es.RollOff()              
 
-        frame_size  = 1024
+        frame_size   = 1024
         rolloffs     = []
 
         for i in range(0, len(track_mono), frame_size):
@@ -135,11 +172,34 @@ class EssentiaAlgo:
 
     @staticmethod
     def get_spectral_contrast(track_mono : np.ndarray):
-        """Computes Spectral Contrast across several frequency bands"""
+        """
+        Computes Spectral Contrast across several frequency bands
+        
+        Spectral contrast measures the difference betweem peaks and valleys
+        in the frequency spectrum. Higher contrast indicates rich, bright harmonic
+        structures (good for differentiating instruments).
+
+        Usefulness:
+            Helps separate smooth, clean genres (like classical) from noisy, dense textures
+            (like distorted rock or heavily compressed electronic music).
+
+        Inputs:
+            track_mono (np.ndarray): Mono audio signal of the track
+
+        Outputs:
+            - spectral_contrast_mean: Mean spectral contrast per band.
+            - spectral_contrast_std: Standard deviation of spectral contrast per band.
+            - spectral_valley_mean: Mean spectral valley per band
+            - spectral_valley_std: Standard deviation of the valley
+
+            It outputs an array, each value corresponds to the contrast of a specific 
+            frequency band, it captures the `texture` per frequency region. Essentia
+            defaults to 6 frequency bands.
+        """
         frame_size  = 1024
         window      = es.Windowing(type='hann') 
         spectrum    = es.Spectrum()             
-        # Adding the framme_size parameter since it defaults to 2048 and gives an error
+        # Adding the frame_size parameter since it defaults to 2048 and gives an error
         contrast    = es.SpectralContrast(frameSize=frame_size)              
 
 
@@ -169,7 +229,24 @@ class EssentiaAlgo:
 
     @staticmethod
     def get_hfc(track_mono : np.ndarray):
-        """Compute the High Frequency Content of the track."""
+        """
+        Compute the High Frequency Content of the track.
+
+        HFC emphasizes high-frequency energy, useful for detecting bright or sharp tracks.
+        Higher values generally correspond to energetic or high-frequency-heavy content.
+
+        Usefulness:
+            Helps highlight energetic, bright tracks, also read that it complements Flux to confirm
+            that detected frequencies are high-frequency events.        
+
+        Inputs:
+            track_mono (np.ndarray): Mono audio signal of the track
+
+        Outputs:
+            - hfc_mean: Mean high-frequency content.
+            - hfc_std: Standard deviation of high-frequency content.
+
+        """
         window   = es.Windowing(type='hann')
         spectrum = es.Spectrum()
         hfc      = es.HFC()
@@ -194,7 +271,23 @@ class EssentiaAlgo:
 
     @staticmethod
     def get_flux(track_mono : np.ndarray):
-        """Compute spectral flux over the track."""
+        """
+        Compute spectral flux over the track.
+        
+        Spectral flux measures the rate of change in the power spectrum between frames.
+        High flux indicates energetic, rapidly changing tracks; low flux suggests stability.
+
+        Usefulness:
+            Useful for identifying energetic, eventful tracks with lots of changes
+            versus stable, smooth tracks like ambient or continuous pads.
+
+        Inputs:
+            track_mono (np.ndarray): Mono audio signal of the track
+
+        Outputs:
+            - flux_mean: Mean spectral flux.
+            - flux_std: Standard deviation of spectral flux.
+        """
         window   = es.Windowing(type='hann')
         spectrum = es.Spectrum()
         flux     = es.Flux()
@@ -221,7 +314,25 @@ class EssentiaAlgo:
     
     @staticmethod
     def get_flatness_db(track_mono : np.ndarray):
-        """Compute spectral flatness in dB."""
+        """
+        Compute spectral flatness in dB.
+        
+        Spectral flatness measures how noise-like a sound is.
+        High flatness (~1.0) indicates noise or chaotic spectrum;
+        low flatness (~0.0) suggests tonal, harmonic structure.
+
+        Usefulness:
+            Good for distinguishing between harmonic, melodic content and noisy,
+            chaotic textures like percussive or distorted sounds.
+        
+        Inputs:
+            track_mono (np.ndarray): Mono audio signal of the track
+
+        Outputs:
+            - flatness_db_mean: Mean spectral flatness.
+            - flatness_db_std: Standard deviation of spectral flatness.
+
+        """
         window    = es.Windowing(type='hann')
         spectrum  = es.Spectrum()
         flatness  = es.FlatnessDB()
@@ -246,7 +357,26 @@ class EssentiaAlgo:
 
     @staticmethod
     def get_energy_band_ratio(track_mono : np.ndarray):
-        """Compute energy band ratios for defined frequencies."""
+        """
+        Compute energy band ratios for defined frequencies.
+        
+        Provides targeted analysis of energy distribution to help characterize 
+        bass-heavy, mid-focused, or bright tracks. 
+
+        Usefulness:
+            Since it separates the spectrum in bands it helps to classify
+            tracks based on its energy focus since we can see where which band
+            has more energy. bass-heavy, midrange-rich, or bright.
+
+        Inputs:
+            track_mono (np.ndarray): Mono audio signal of the track
+
+        Outputs:
+            - energy_band_ratio_{freq_band_name}_mean: Average frequency respective to the band
+            - energy_band_ratio_{freq_band_name}_std: Standard deviation from each respective band
+
+            Output is manually split into multiple "outputs", they represent a specific frequency range
+        """
 
 
         window     = es.Windowing(type='hann')
@@ -255,9 +385,7 @@ class EssentiaAlgo:
         frame_size = 1024
 
         band_ratios = []
-
-        # TODO Maybe change 22,050 to 16,000 if there's tracks with lower freq
-        freq_bands = [(0, 60), (60, 250),
+        freq_bands  = [(0, 60), (60, 250),
                       (250, 500), (500, 2000), 
                       (2000, 4000), (4000, 6000),
                       (6000, 22050)]
@@ -297,7 +425,23 @@ class EssentiaAlgo:
     
     @staticmethod
     def get_spectral_peaks(track_mono : np.ndarray):
-        """Extract spectral peaks (frequencies and magnitudes)."""
+        """
+        Extract spectral peaks (frequencies and magnitudes).
+
+        Useful for analyzing tonal complexity.
+
+        Usefulness:
+            Good for differentiating tracks that are complex, good for understanding
+            overall tonal density.
+
+        Inputs:
+            track_mono (np.ndarray): Mono audio signal of the track
+
+        Outputs:
+            - spectral_peaks_avg_freq: Average frequency of spectral peaks (Hz).
+            - spectral_peaks_avg_mag: Average magnitude of spectral peaks.
+            - spectral_peaks_count: Average number of peaks per frame.
+        """
         window      = es.Windowing(type='blackmanharris92')
         spectrum    = es.Spectrum()
         spec_peaks  = es.SpectralPeaks()
@@ -331,6 +475,64 @@ class EssentiaAlgo:
                 'spectral_peaks_count'   : 0
             }
         return features
+    
+    @staticmethod
+    def get_gfcc(track_mono : np.ndarray):
+        """
+        Computes the Gammatone Frequency Cepstral Coefficients (GFCC) and ERB band energies.
+
+        GFCC captures timbral details better in noisy enviroments, good when a song is 
+        poorly mastered or is noisy, while the ERB bands provide a snapshot the energy distribution.
+        Gammatone Filters are modeled after the `human ear's basilar membrane response`, 
+        which in theory it does better at isolating relevant frequency information.
+
+        Usefulness:
+            Good for extracting a tracks timbral features from noisy songs — helps 
+            the system to distinguish the tracks more accurately.
+
+        Inputs:
+            track_mono (np.ndarray): Mono audio signal of the track
+
+        Outputs:
+            - gfcc_avg: Average GFCC coefficients.
+            - gfcc_peak: Peak GFCC coefficients.
+            - erb_bands_mean: Mean energy in ERB bands.
+            - erb_bands_std: Standard deviation of energy in ERB bands.
+
+            Output is an array, for gfcc is a timbral descriptor extracted from the Gammatone filterbank; 
+            the ERB arrays correspond to energy in one of the bands. 
+
+            NOTE - erb array is 40 items, gfcc array 13 
+        """
+        window   = es.Windowing(type='hann')
+        spectrum = es.Spectrum()
+        gfcc     = es.GFCC()
+
+        frame_size  = 1024
+        erb_bands   = []
+        gfcc_coeffs = []
+
+        for i in range(0, len(track_mono), frame_size):
+            frame = track_mono[i: i + frame_size]
+            if len(frame) < frame_size:
+                continue
+            windowed = window(frame)
+            spec = spectrum(windowed)
+            bands, coeffs = gfcc(spec)
+            erb_bands.append(bands)
+            gfcc_coeffs.append(coeffs)
+
+        erb_bands   = np.array(erb_bands)
+        gfcc_coeffs = np.array(gfcc_coeffs)
+
+        feature= {
+            'erb_bands_mean': np.mean(erb_bands, axis=0).tolist(),
+            'erb_bands_std' : np.std(erb_bands, axis=0).tolist(),
+            'gfcc_mean'      : np.mean(gfcc_coeffs, axis=0).tolist(),
+            'gfcc_peak'      : np.max(gfcc_coeffs, axis=0).tolist()
+        }
+
+        return feature
     
     @staticmethod
     def el_monstruo(track_mono : np.ndarray):

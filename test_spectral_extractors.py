@@ -4,14 +4,10 @@ from src.classes.track import Track, TrackPipeline
 from src.classes.essentia_algos import EssentiaAlgo
 from src.classes.essentia_containers import EssentiaAlgorithmTask
 
-# Pathnames of freaking songs
-track_paths = [
-    "/Users/jorge/soulseek-music/02. Mr. Brightside.flac",
-    "/Users/jorge/soulseek-music/02-arctic_monkeys-r_u_mine.flac",
-    "/Users/jorge/soulseek-music/01. Dog Days Are Over.flac",
-    "/Users/jorge/soulseek-music/Billie Eilish_WHEN WE ALL FALL ASLEEP, WHERE DO WE GO!_10_bury a friend.flac",
-]
+# Path to test algorithm (4 tracks), to check everithing runs as expected
+test_track_path = "/Users/jorge/Documents/University/Spring2025/capstone/tracks_test"
 
+# All tracks
 audio_path = "/Users/jorge/soulseek-music"
 
 # Algorithms to test :D
@@ -23,13 +19,13 @@ feature_extractors = [
     EssentiaAlgo.get_flux,
     EssentiaAlgo.get_flatness_db,
     EssentiaAlgo.get_energy_band_ratio,
-    EssentiaAlgo.get_spectral_peaks
+    EssentiaAlgo.get_spectral_peaks,
+    EssentiaAlgo.get_gfcc
 ]
 
 essentia_algoritms_task = EssentiaAlgorithmTask(feature_extractors)
 
 all_results = {}
-
 
 def process_track(track_path):
     track = Track(track_path)
@@ -62,4 +58,4 @@ if __name__ == "__main__":
     track_pipeline = TrackPipeline(audio_path)
     track_pipeline.run_pipeline(essentia_task_list=[essentia_algoritms_task])
     track_df = track_pipeline.get_track_dataframe()
-    track_df.to_csv("track_features_summary_pl.csv", index=True)
+    track_df.to_csv("test_result_algorithms/all_algo_result.csv", index=True)
