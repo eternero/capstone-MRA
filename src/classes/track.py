@@ -3,9 +3,11 @@
 """
 import os
 import time
+import copy
 import random
-from dataclasses import dataclass, field
+import itertools
 from typing import Any, List, Dict, Callable
+from dataclasses import dataclass, field, replace
 
 import essentia
 import numpy as np
@@ -44,6 +46,62 @@ class Track:
 
     features      : Dict[str, Any] = field(default_factory=dict)
     metadata      : Dict[str, Any] = field(default_factory=dict)
+    segment_start : int            = field(default_factory=int)
+
+
+    def segment_track(self,
+                      seg_num           : int,
+                      seg_start         : int,
+                      new_track_mono_16 : np.ndarray = None,
+                      new_track_mono_44 : np.ndarray = None) -> "Track":
+        """Creates a segmented copy of a track."""
+
+        # Set the segment_num
+        new_metadata                  = self.metadata.copy()
+        new_metadata['segment_num']   = seg_num
+        inherited_features            = copy.deepcopy(self.features)
+
+        track_segment = replace(self,
+                       metadata       = new_metadata,
+                       segment_start  = seg_start,
+                       features       = inherited_features,
+                       track_mono_16  = new_track_mono_16,
+                       track_mono_44  = new_track_mono_44,)
+
+        return track_segment
+
+
+    def create_segments(self) -> list["Track"]:
+        """Returns segmented track objects"""
+        if 'length' not in self.metadata:
+            raise KeyError('`length` attribute must be present in track metadata')
+
+        track_length   = self.metadata['length']
+        seg_track_list = []
+        segment_size   = 10
+
+        for sec in range(0, track_length, 60):
+
+            # Skip frames that might be too small. This should only occur for final-minute frames.
+            if track_length - sec < segment_size:
+                continue
+
+            # Define the bounds for the random number.
+            start_sec   = sec + segment_size                                # 190
+            end_sec     = min(sec + (60 - segment_size), track_length) + 1  # 185
+
+            # Acquire the random number, and then acquire the segmented frame for each sample rate.
+            upper_bound = random.randint(start_sec, end_sec)
+            lower_bound = upper_bound - segment_size
+
+            seg_num     = sec // 60
+            seg_track   = self.segment_track(seg_num   = seg_num,
+                                             seg_start = lower_bound)
+
+            seg_track_list.append(seg_track)
+
+        return seg_track_list
+
 
 
 class TrackPipeline:
@@ -91,7 +149,7 @@ class TrackPipeline:
                 spotify_features = SpotifyAPI.get_spotify_features(track_artist,track_name,
                                                                    track_album,access_token)
                 track.features.update(spotify_features)
-                return track
+                break
 
             # If we catch an error, we retry and delay our calls until we find success.
             except (HTTPError, Timeout, ConnectionError) as err:
@@ -107,6 +165,10 @@ class TrackPipeline:
                 delay = base_delay * (2 ** (retries - 1)) + random.uniform(0, 0.5)
                 print(f"Retrying in {delay:.2f} seconds...")
                 time.sleep(delay)
+
+
+        # Once we've got all of our Metadata and Spotify API Attributes, we can segment our track.
+        return track.create_segments()
 
 
     def run_pipeline(self, essentia_task_list : List[FeatureTask],
@@ -147,34 +209,28 @@ class TrackPipeline:
                              executor_type="thread"
                         )
 
-        self.track_list = [track for track in result_tracks if track is not None]
+        flat_track_list = list(itertools.chain(*result_tracks))
+        self.track_list = [track for track in flat_track_list if track is not None]
 
         # -----------------------------------------------------------------------------------------
         # Step 2 : Essentia Models Extraction
         # -----------------------------------------------------------------------------------------
         if not only_track:
-            track_paths  =  [track.track_path for track in self.track_list]
-            feat_results = run_in_parallel(FeatureExtractor.retrieve_all_essentia_features,
-                                        track_paths,
+            start = time.time()
+            result_tracks = run_in_parallel(FeatureExtractor.retrieve_all_essentia_features,
+                                        self.track_list,
                                         essentia_task_list,
                                         num_workers=10,
                                         executor_type="process",
                         )
 
-            for track, extracted_features in zip(self.track_list, feat_results):
-                if extracted_features is not None:
-                    track_features, track_mono_16 = extracted_features
-                    track.features.update(track_features)
-                    track.track_mono_16 = track_mono_16
-
-                else:   # There are no logs right now lol, will have to change that
-                    print(f"No features returned for track: {track.track_path}. Check worker logs.")
-
+            self.track_list = [track for track in result_tracks if track is not None]
+            print(f"Executed in {time.time() - start}")
 
         # -----------------------------------------------------------------------------------------
         # Step 3 : Handle any tasks that can't be parallelized. Must take `track_mono` as input.
         # -----------------------------------------------------------------------------------------
-        if additional_tasks is None:
+        if additional_tasks is None or only_track:
             additional_tasks = []
 
         for task in additional_tasks:
@@ -217,12 +273,4 @@ class TrackPipeline:
 
         # Create DataFrame from list of row dictionaries.
         df = pd.DataFrame(rows)
-
-        # # Determine all columns in the DataFrame.
-        # all_columns = list(df.columns)
-        # # Ensure required columns are first; maintain their order.
-        # remaining_columns = [col for col in all_columns if col not in required_columns]
-        # new_order = required_columns + remaining_columns
-        # df = df[new_order]
-
         return df
