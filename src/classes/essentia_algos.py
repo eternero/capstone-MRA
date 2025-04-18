@@ -19,6 +19,38 @@ import essentia.standard as es
 class EssentiaAlgo:
     """Just read the file docstring."""
 
+    #-------------------------------------------------------------------------------------------------
+    #   Shared utils for spectral algorithms
+    #-------------------------------------------------------------------------------------------------
+    FRAME_SIZE = 1024
+    HOP_SIZE   = 1024
+
+    _window   = es.Windowing(type="hann")
+    _spectrum = es.Spectrum()
+
+    @classmethod
+    def _spectral_frames(cls, track_mono: np.ndarray):
+        """
+        Yield for spectrum frames — To remove redundancies
+        """
+        n = len(track_mono)
+        for start in range(0, n - cls.FRAME_SIZE, cls.HOP_SIZE):
+            frame = track_mono[start : start + cls.FRAME_SIZE]
+            yield cls._spectrum(cls._window(frame))
+
+    @staticmethod
+    def _stats(values: np.ndarray, name: str, include_max: bool=False) -> dict[str, float]:
+        """
+        Return mean / std / (max) for a vector with its keys
+        """
+        features: dict[str, float] = {
+            f"{name}_mean": float(np.mean(values)),
+            f"{name}_std": float(np.std(values))
+        }
+        if include_max:
+            features[f"{name}_max"] = float(np.max(values))
+        return features
+
     @staticmethod
     def get_bpm_re2013(track_mono : np.ndarray) -> dict[str, float]:
         """
@@ -79,8 +111,8 @@ class EssentiaAlgo:
         return features
 
 
-    @staticmethod
-    def get_spectral_centroid_time(track_mono : np.ndarray):
+    @classmethod
+    def get_spectral_centroid_time(cls, track_mono : np.ndarray):
         """
         Computes the spectral centroid of the audio over time.
 
@@ -99,34 +131,13 @@ class EssentiaAlgo:
             - spectral_centroid_mean: Mean spectral centroid (Hz).
             - spectral_centroid_std: Standard deviation of spectral centroid.
             - spectral_centroid_max: Maximum spectral centroid value.
-        """
-        window   = es.Windowing(type='hann') 
-        spectrum = es.Spectrum()             
-        centroid = es.SpectralCentroidTime() 
+        """         
+        algorithm = es.SpectralCentroidTime() 
+        vals      = np.array([algorithm(spectrum) for spectrum in cls._spectral_frames(track_mono)])
+        return cls._stats(vals, "spectral_centroid", include_max=True)
 
-        frame_size = 1024
-        centroids = []
-
-        assert track_mono is not None, "track_mono must not be None"
-        for i in range(0, len(track_mono), frame_size):
-            frame = track_mono[i: i + frame_size]
-            if len(frame) < frame_size:
-                continue
-            windowed    = window(frame)
-            spec        = spectrum(windowed)
-            centroids.append(centroid(spec))
-
-        # Saving statistics
-        centroids = np.array(centroids)
-        features = {
-            'spectral_centroid_mean':   np.mean(centroids),
-            'spectral_centroid_std' :   np.std(centroids),
-            'spectral_centroid_max' :   np.max(centroids),
-        }
-        return features
-
-    @staticmethod
-    def get_spectral_rolloff(track_mono : np.ndarray):
+    @classmethod
+    def get_spectral_rolloff(cls, track_mono : np.ndarray):
         """
         Computes the spectral rolloff  of a track
 
@@ -147,31 +158,12 @@ class EssentiaAlgo:
             - rolloff_std: Standard deviation of roll-off frequency.
             - rolloff_max: Maximum roll-off frequency.
         """
-        window      = es.Windowing(type='hann') 
-        spectrum    = es.Spectrum()             
-        rolloff     = es.RollOff()              
+        algorithm = es.RollOff()              
+        values    = np.array([algorithm(spectrum) for spectrum in cls._spectral_frames(track_mono)])
+        return cls._stats(values, "rolloff", include_max=True)
 
-        frame_size   = 1024
-        rolloffs     = []
-
-        for i in range(0, len(track_mono), frame_size):
-            frame = track_mono[i: i + frame_size]
-            if len(frame) < frame_size:
-                continue
-            windowed = window(frame)
-            spec = spectrum(windowed)
-            rolloffs.append(rolloff(spec))
-        
-        rolloffs = np.array(rolloffs)
-        feature = {    
-            'rolloff_mean' : np.mean(rolloffs),
-            'rolloff_std' : np.std(rolloffs),
-            'rolloff_max' : np.max(rolloffs),
-        }
-        return feature
-
-    @staticmethod
-    def get_spectral_contrast(track_mono : np.ndarray):
+    @classmethod
+    def get_spectral_contrast(cls, track_mono : np.ndarray):
         """
         Computes Spectral Contrast across several frequency bands
         
@@ -195,40 +187,27 @@ class EssentiaAlgo:
             It outputs an array, each value corresponds to the contrast of a specific 
             frequency band, it captures the `texture` per frequency region. Essentia
             defaults to 6 frequency bands.
-        """
-        frame_size  = 1024
-        window      = es.Windowing(type='hann') 
-        spectrum    = es.Spectrum()             
+        """    
         # Adding the frame_size parameter since it defaults to 2048 and gives an error
-        contrast    = es.SpectralContrast(frameSize=frame_size)              
-
-
-        contrasts   = []
-        valleys     = []
-
-        for i in range(0, len(track_mono), frame_size):
-            frame = track_mono[i: i + frame_size]
-            if(len(frame) < frame_size):
-                continue
-
-            windowed    = window(frame)
-            spec        = spectrum(windowed)
-            contrast_values, contrast_valleys = contrast(spec)
+        algorithm = es.SpectralContrast(frameSize=cls.FRAME_SIZE)
+        contrasts, valleys = [], []
+        for spectrum in cls._spectral_frames(track_mono):
+            contrast_values, contrast_valleys = algorithm(spectrum)
             contrasts.append(contrast_values)
             valleys.append(contrast_valleys)
 
         contrasts = np.array(contrasts)
         valleys   = np.array(valleys)
-        feature = {
+        return {
             'spectral_contrast_mean' : np.mean(contrasts, axis=0),
             'spectral_contrast_std'  : np.std(contrasts, axis=0),
             'spectral_valley_mean'   : np.mean(valleys, axis=0),
             'spectral_valley_std'    : np.std(valleys, axis=0)
         }
-        return feature
 
-    @staticmethod
-    def get_hfc(track_mono : np.ndarray):
+
+    @classmethod
+    def get_hfc(cls, track_mono : np.ndarray):
         """
         Compute the High Frequency Content of the track.
 
@@ -247,30 +226,13 @@ class EssentiaAlgo:
             - hfc_std: Standard deviation of high-frequency content.
 
         """
-        window   = es.Windowing(type='hann')
-        spectrum = es.Spectrum()
-        hfc      = es.HFC()
+        algorithm = es.HFC()
+        values    = np.array([algorithm(spectrum) for spectrum in cls._spectral_frames(track_mono)])
+        return cls._stats(values, "hfc")
+         
 
-        frame_size = 1024
-        hfc_vals   = []
-
-        for i in range(0, len(track_mono), frame_size):
-            frame = track_mono[i: i + frame_size]
-            if len(frame) < frame_size:
-                continue
-            windowed = window(frame)
-            spec     = spectrum(windowed)
-            hfc_vals.append(hfc(spec))
-
-        hfc_vals = np.array(hfc_vals)
-        feature = {
-            'hfc_mean' : np.mean(hfc_vals),
-            'hfc_std'  : np.std(hfc_vals)
-        }
-        return feature
-
-    @staticmethod
-    def get_flux(track_mono : np.ndarray):
+    @classmethod
+    def get_flux(cls, track_mono : np.ndarray):
         """
         Compute spectral flux over the track.
         
@@ -288,32 +250,12 @@ class EssentiaAlgo:
             - flux_mean: Mean spectral flux.
             - flux_std: Standard deviation of spectral flux.
         """
-        window   = es.Windowing(type='hann')
-        spectrum = es.Spectrum()
-        flux     = es.Flux()
-
-        frame_size = 1024
-        flux_vals  = []
-
-        for i in range(0, len(track_mono), frame_size):
-            frame = track_mono[i: i + frame_size]
-            if len(frame) < frame_size:
-                continue
-            windowed = window(frame)
-            spec     = spectrum(windowed)
-            flux_values = flux(spec)
-            flux_vals.append(flux_values)
-
-
-        flux_vals = np.array(flux_vals)
-        feature = {
-            'flux_mean' : np.mean(flux_vals),
-            'flux_std'  : np.std(flux_vals)
-        }
-        return feature
+        algorithm = es.Flux()
+        values    = np.array([algorithm(spectrum) for spectrum in cls._spectral_frames(track_mono)])
+        return cls._stats(values, "flux")
     
-    @staticmethod
-    def get_flatness_db(track_mono : np.ndarray):
+    @classmethod
+    def get_flatness_db(cls, track_mono : np.ndarray):
         """
         Compute spectral flatness in dB.
         
@@ -333,30 +275,12 @@ class EssentiaAlgo:
             - flatness_db_std: Standard deviation of spectral flatness.
 
         """
-        window    = es.Windowing(type='hann')
-        spectrum  = es.Spectrum()
-        flatness  = es.FlatnessDB()
+        algorithm = es.FlatnessDB()
+        values    = np.array([algorithm(spectrum) for spectrum in cls._spectral_frames(track_mono)])
+        return cls._stats(values, "flatness_db")
 
-        frame_size = 1024
-        flatness_vals = []
-
-        for i in range(0, len(track_mono), frame_size):
-            frame = track_mono[i:i+frame_size]
-            if len(frame) < frame_size:
-                continue
-            windowed = window(frame)
-            spec     = spectrum(windowed)
-            flatness_vals.append(flatness(spec))
-
-        flatness_vals = np.array(flatness_vals)
-        feature = {
-            'flatness_db_mean'  : np.mean(flatness_vals),
-            'flatness_db_std'   : np.std(flatness_vals)
-        }
-        return feature
-
-    @staticmethod
-    def get_energy_band_ratio(track_mono : np.ndarray):
+    @classmethod
+    def get_energy_band_ratio(cls, track_mono : np.ndarray):
         """
         Compute energy band ratios for defined frequencies.
         
@@ -377,15 +301,7 @@ class EssentiaAlgo:
 
             Output is manually split into multiple "outputs", they represent a specific frequency range
         """
-
-
-        window     = es.Windowing(type='hann')
-        spectrum   = es.Spectrum()
-
-        frame_size = 1024
-
-        band_ratios = []
-        freq_bands  = [(0, 60), (60, 250),
+        freq_bands = [(0, 60), (60, 250),
                       (250, 500), (500, 2000), 
                       (2000, 4000), (4000, 6000),
                       (6000, 22050)]
@@ -396,35 +312,23 @@ class EssentiaAlgo:
                       'brilliance']
 
         # Create an instance per band
-        energy_band = [
-            es.EnergyBandRatio(
-                sampleRate=44100,
-                startFrequency=start,
-                stopFrequency=stop
-            )
-            for (start, stop) in freq_bands]
-
-
-        for i in range(0, len(track_mono), frame_size):
-            frame = track_mono[i: i + frame_size]
-            if len(frame) < frame_size:
-                continue
-            windowed = window(frame)
-            spec     = spectrum(windowed)
-            
-            ratios = [band_algo(spec) for band_algo in energy_band]
-            band_ratios.append(ratios)
-
-        ratios_array = np.array(band_ratios)
-        features = {}
-        for idx, name in enumerate(band_names):
-            features[f'energy_ratio_{name}_mean'] = np.nanmean(ratios_array[:, idx])
-            features[f'energy_ratio_{name}_std']  = np.nanstd(ratios_array[:, idx])
-
-        return features
+        band_algorithms = [
+            es.EnergyBandRatio(sampleRate=44100, startFrequency=start, stopFrequency=stop)
+            for (start, stop) in freq_bands
+        ]
+        frame_ratios = [
+            [algo(spec) for algo in band_algorithms] for spec in cls._spectral_frames(track_mono)
+        ]
+        ratios    = np.array(frame_ratios)
+        frequency = {}
+        for i, name in enumerate(band_names):
+            frequency[f"energy_ratio_{name}_mean"] = float(np.nanmean(ratios[:, i]))
+            frequency[f"energy_ratio_{name}_std"]  = float(np.nanstd(ratios[:, i]))
+        
+        return frequency
     
-    @staticmethod
-    def get_spectral_peaks(track_mono : np.ndarray):
+    @classmethod
+    def get_spectral_peaks(cls, track_mono : np.ndarray):
         """
         Extract spectral peaks (frequencies and magnitudes).
 
@@ -442,42 +346,28 @@ class EssentiaAlgo:
             - spectral_peaks_avg_mag: Average magnitude of spectral peaks.
             - spectral_peaks_count: Average number of peaks per frame.
         """
-        window      = es.Windowing(type='blackmanharris92')
-        spectrum    = es.Spectrum()
-        spec_peaks  = es.SpectralPeaks()
-
-        frame_size = 1024
+        window_bh = es.Windowing(type="blackmanharris92")
+        algorithm = es.SpectralPeaks()
+        spectrum  = cls._spectrum
         peak_counts, freqs, mags = [], [], []
 
-        for i in range(0, len(track_mono), frame_size):
-            frame = track_mono[i: i + frame_size]
-            if len(frame) < frame_size:
-                continue
-            windowed = window(frame)
-            spec     = spectrum(windowed)
+        n = len(track_mono)
+        for start in range(0, n - cls.FRAME_SIZE + 1, cls.HOP_SIZE):
+            frame = track_mono[start : start + cls.FRAME_SIZE]
+            spec = spectrum(window_bh(frame))
+            freq_vals, mags_vals = algorithm(spec)
+            peak_counts.append(len(freq_vals))
+            freqs.extend(freq_vals)
+            mags.extend(mags_vals)
 
-            frequency, magnitude = spec_peaks(spec)
-            peak_counts.append(len(frequency))
-            if len(frequency) > 0:
-                freqs.extend(frequency)
-                mags.extend(magnitude)
-
-        if freqs:
-            features = {
-                'spectral_peaks_avg_freq': np.mean(freqs),
-                'spectral_peaks_avg_mag' : np.mean(mags),
-                'spectral_peaks_count'   : np.mean(peak_counts)
-            }
-        else:
-            features = {
-                'spectral_peaks_avg_freq': 0,
-                'spectral_peaks_avg_mag' : 0,
-                'spectral_peaks_count'   : 0
-            }
-        return features
+        return {
+            'spectral_peaks_avg_freq': np.mean(freqs),
+            'spectral_peaks_avg_mag' : np.mean(mags),
+            'spectral_peaks_count'   : np.mean(peak_counts)
+        }
     
-    @staticmethod
-    def get_gfcc(track_mono : np.ndarray):
+    @classmethod
+    def get_gfcc(cls, track_mono : np.ndarray):
         """
         Computes the Gammatone Frequency Cepstral Coefficients (GFCC) and ERB band energies.
 
@@ -504,35 +394,23 @@ class EssentiaAlgo:
 
             NOTE - erb array is 40 items, gfcc array 13 
         """
-        window   = es.Windowing(type='hann')
-        spectrum = es.Spectrum()
-        gfcc     = es.GFCC()
+        algorithm = es.GFCC()
+        erb_bands, gfcc_coeffs = [], []
 
-        frame_size  = 1024
-        erb_bands   = []
-        gfcc_coeffs = []
-
-        for i in range(0, len(track_mono), frame_size):
-            frame = track_mono[i: i + frame_size]
-            if len(frame) < frame_size:
-                continue
-            windowed = window(frame)
-            spec = spectrum(windowed)
-            bands, coeffs = gfcc(spec)
-            erb_bands.append(bands)
-            gfcc_coeffs.append(coeffs)
+        for spec in cls._spectral_frames(track_mono):
+            erb, coeff = algorithm(spec)
+            erb_bands.append(erb)
+            gfcc_coeffs.append(coeff)
 
         erb_bands   = np.array(erb_bands)
         gfcc_coeffs = np.array(gfcc_coeffs)
 
-        feature= {
-            'erb_bands_mean': np.mean(erb_bands, axis=0).tolist(),
-            'erb_bands_std' : np.std(erb_bands, axis=0).tolist(),
+        return {
+            'erb_bands_mean' : np.mean(erb_bands, axis=0).tolist(),
+            'erb_bands_std'  : np.std(erb_bands, axis=0).tolist(),
             'gfcc_mean'      : np.mean(gfcc_coeffs, axis=0).tolist(),
             'gfcc_peak'      : np.max(gfcc_coeffs, axis=0).tolist()
         }
-
-        return feature
     
     @staticmethod
     def el_monstruo(track_mono : np.ndarray):
