@@ -25,17 +25,18 @@ class EssentiaAlgo:
         """
         rhythm_extractor = load_essentia_algorithm("RhythmExtractor2013", method="multifeature")
         bpm, _, _, _, _  = rhythm_extractor(track_mono)
+        normalized_bpm   = bpm / 208                        # The maximum BPM is 208 by default.
 
         # Update the features for our track and return (bpm, beats)
-        return {'bpm' : bpm}
+        return {'bpm' : normalized_bpm}
 
 
     @staticmethod
     def get_energy(track_mono : np.ndarray) -> dict[str, float]:
         """Get the track energy using the Essentia Energy Algorithm."""
         energy_extractor         = load_essentia_algorithm("Energy")
-        track_energy             = energy_extractor(track_mono)
-        return {'energy' : track_energy}
+        track_energy             = energy_extractor(track_mono) / len(track_mono)
+        return {'avg_energy' : track_energy}
 
 
     @staticmethod
