@@ -11,7 +11,7 @@ from sklearn.preprocessing import StandardScaler
 logging.basicConfig(
     level=logging.INFO,
     format='%(message)s',
-    filename='distance.log',
+    filename='distance_ind.log',
     filemode='a'
 )
 
@@ -22,7 +22,6 @@ class DistMethods:
     # ---------------------------------------------------------------------------------------------
     #  Define the numerical distance methods first
     # ---------------------------------------------------------------------------------------------
-
     @staticmethod
     def _minkowski_numerical(input_track        : pd.Series,
                              comp_track         : pd.Series,
@@ -114,7 +113,6 @@ class DistMethods:
     # ---------------------------------------------------------------------------------------------
     #  Define the dimensional distance methods now
     # ---------------------------------------------------------------------------------------------
-
     @staticmethod
     def euclidean_dimensional(input_track          : pd.Series,
                               comp_track           : pd.Series,
@@ -305,7 +303,9 @@ if __name__ == '__main__':
         '02 Archangel.flac',
         '08 - Sad World.flac',
         '03 Alive in the Septic Tank.flac',
-        '15._maddington.flac'
+        '15._maddington.flac',
+        '13 - Boldy James - Pots and Pans.flac',
+        '02 - Unfeeling.flac'
     ]
 
     # ---------------------------------------------------------------------------------------------
@@ -313,72 +313,92 @@ if __name__ == '__main__':
     # ---------------------------------------------------------------------------------------------
     z_score_normalization = StandardScaler().fit_transform
 
-
     # ---------------------------------------------------------------------------------------------
-    # Only MFCC Based Features
+    # Effnet High Level / Subjective Features                                                      |
     # ---------------------------------------------------------------------------------------------
-
-    numerical_features_mfcc   = {'mfcc_peak_energy' : 1.0 , 'mfcc_avg_energy' : 1.0}
-    dimensional_features_mfcc = {'mfcc_mean' : 1.0, 'mfcc_std' : 1.0}
-    dimensional_features_band = {'band_mean' : 1.0, 'band_std' : 1.0}
-
+    #   Not very great recommendations. These either need some tuning, or to not be used at all.
+    #   The only somewhat good thing, is that at times they're able to recognize an artists style
+    #   and recommend that very same artist... but the Handpicked Set No.2 can also do this without
+    #   the plethora of inconsistencies.
+    #
+    #   The only other thing to mention is that they yield very low values, so I guess their impact
+    #   wouldn't be much... but then again, why add something that sucks?
+    #
+    #   Performs a bit better when the redundant features are removed, so that is to be considered.
     # ---------------------------------------------------------------------------------------------
-    # Only Effnet Features
-    # ---------------------------------------------------------------------------------------------
-    numerical_features_effnet = {'danceable_effnet': 1.0, 'aggressive_effnet': 1.0, 'happy_effnet': 1.0,
-                                 'party_effnet': 1.0, 'relaxed_effnet': 1.0, 'sad_effnet': 1.0,
-                                 'acoustic_effnet': 1.0, 'electronic_effnet': 1.0,
-                                 'instrumental_effnet': 1.0, 'female_effnet':1.0, 'tonal_effnet':1.0, 'bright_effnet':1.0, 'bright_nsynth_effnet':1.0,
-                                 'approachability_effnet':1.0, 'engagement_effnet':1.0,
+    effnet_high_level_feats   = {'happy_effnet' : 1.0, 'danceable_effnet': 1.0,
+                                 'aggressive_effnet': 1.0, 'relaxed_effnet': 1.0,
+                                 # 'party_effnet': 1.0, 'sad_effnet': 1.0,
                                 }
 
-    # Remove features I think are useless or redundant.
-    useless_features          = ['sad_effnet', 'party_effnet', 'bright_effnet']
-    for useless_ft in useless_features:
-        numerical_features_effnet.pop(useless_ft, None)
+    # ---------------------------------------------------------------------------------------------
+    # Effnet Tonal Features                                                                        |
+    # ---------------------------------------------------------------------------------------------
+    #   Not sure what to say about these. Nothing to really observe. The values for the numerical
+    #   features are rather low – so I'd say that when used all together these are dominated by the
+    #   tristimulus.
+    #
+    #   Either way... the results are not good. Not horrendous, but simply not good. Maybe these
+    #   could be used with relatively low weights, since sometimes the Top 1-3 results are decent,
+    #   but overall these are not as good as others.
+    #
+    #   - Addind the `avg_dissonance` makes it a bit better surprisingly. Still not good, but somewhat
+    #     more considerable.
+    #   - The `tonal` effnet value could probably just be removed... since its mean
+    #     is literally like 94... so it just marks everything as tonal ffsk.
+    #   - Have to do more thorough testing of `bright_effnet` vs `bright_nsynth`
+    # ---------------------------------------------------------------------------------------------
+    tonal_num_features        = {'tonal_effnet' : 1.0, 'bright_effnet' : 1.0, 'avg_dissonance' : 1.0}
+    tonal_dim_features        = {'tristimulus' : 1.0}
 
     # ---------------------------------------------------------------------------------------------
-    # Custom Features Set
+    # Effnet Social Features                                                                       |
     # ---------------------------------------------------------------------------------------------
-    handpicked_num_features   = {'bright_nsynth_effnet' : 1.0, 'electronic_effnet' : 1.0, 'danceable_effnet' : 1.0,
-                                 'acoustic_effnet' : 1.0, 'instrumental_effnet' : 1.0, 'female_effnet' : 1.0,
-                                 'approachability_effnet':1.0, 'engagement_effnet':1.0,
-                                 'avg_dissonance' : 1.0, 'bpm' : 1.0
+    #   Honestly pretty good for just two numerical features. Excluding the `popularity` feature
+    #   from the Spotify API is better in contrast to using it...
+    # ---------------------------------------------------------------------------------------------
+    social_effnet_features    = {'approachability_effnet':1.0, 'engagement_effnet':1.0}
+
+    # ---------------------------------------------------------------------------------------------
+    # Handpicked Features Set #1 - Starting with just a few.                                       |
+    # ---------------------------------------------------------------------------------------------
+    handpicked_num_features_1 = { 'electronic_effnet' : 1.0,
+                                 'instrumental_effnet' : 1.0, 'female_effnet' : 1.0,  'bpm' : 1.0
                                 }
-    handpicked_dim_features   = {'mfcc_mean' : 1.00, 'mfcc_std' : 1.0}
-
+    handpicked_dim_features_1 = {'mfcc_mean' : 0.10, 'mfcc_std' : 0.05, 'tristimulus' : 1.0}    # MFCC Features have lower weight
+                                                                                                # due to their high dimensionality
+                                                                                                # more on this on my .md notes...
+    # ---------------------------------------------------------------------------------------------
+    # Handpicked Features Set #2 - A few extra features based on previous testing.                 |
+    # ---------------------------------------------------------------------------------------------
+    #       - Way better results. Can't imagine what this would be able to do with either tuning
+    #         the parameters or using contrastive learning.
+    #       - Still ways to go, and this does not yet implement nearly half of the extracted
+    #         features (not necessary to use them either, but must be tested).
+    #       - It does not implement the Pitch Histogram or tristimulus either. Both could be
+    #         implemented and would surely be of benefit.
+    # ---------------------------------------------------------------------------------------------
+    handpicked_num_norm_2     = z_score_normalization
+    handpicked_num_features_2 = { 'electronic_effnet' : 1.0, 'instrumental_effnet' : 1.0, 'acoustic_effnet' : 0.8,
+                                  'female_effnet' : 1.0, 'bpm' : 0.65 }
+    handpicked_dim_features_2 = {'mfcc_mean' : 0.06, 'mfcc_std' : 0.15}     # Not adding tristimulus yet.
 
     # ---------------------------------------------------------------------------------------------
-    # Running tests
+    # Running tests : Define your test parameters below for the Distance Pipeline                  |
     # ---------------------------------------------------------------------------------------------
+    logging.info("Current Settings:\n  \t-TEST MESSAGE\n\t-Euclidean for Both Distances\n \t-No Normalization\n")
 
-    logging.info("Current Settings:\n  \t-Only Effnet Numerical Features \n\t-Euclidean for Both\n \t-Z-Score Normalization\n")
+    track_dataset_path = ''
     for testing_track_filename in testing_tracks:
 
         dist_pipeline = DistPipeline(input_filename      = testing_track_filename,
-                                    track_dataset_path   = '/Users/nico/Desktop/CIIC/CAPSTONE/essentia_demo/datasets/aaa_full.csv',
+                                    track_dataset_path   = track_dataset_path,
                                     numerical_dist       = DistMethods.euclidean_numerical,
                                     dimensional_dist     = DistMethods.euclidean_dimensional,
-                                    numerical_features   = numerical_features_effnet,
+                                    numerical_features   = None,
                                     dimensional_features = None,
-                                    normalize_numerical  = z_score_normalization
+                                    normalize_numerical  = None
                                     )
-
         dist_pipeline.run_pipeline()
 
     logging.info("-"*200)
-
-
-
-
-
-
-    dist_pipeline = DistPipeline(input_filename       = '01 - AAA Powerline.flac',
-                                 track_dataset_path   = '/Users/nico/Desktop/CIIC/CAPSTONE/essentia_demo/datasets/aaa_full.csv',
-                                 numerical_dist       = DistMethods.euclidean_numerical,
-                                 dimensional_dist     = DistMethods.euclidean_dimensional,
-                                 numerical_features   = numerical_features_effnet,
-                                 dimensional_features = None,
-                                )
-
-    # dist_pipeline.run_pipeline()
