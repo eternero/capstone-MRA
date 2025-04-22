@@ -11,7 +11,7 @@ from sklearn.preprocessing import StandardScaler
 logging.basicConfig(
     level=logging.INFO,
     format='%(message)s',
-    filename='distance_ind.log',
+    filename='distance_ind_re.log',
     filemode='a'
 )
 
@@ -45,13 +45,15 @@ class DistMethods:
             distance : The cumulative distance of the features between the two tracks.
         """
 
-        distance = 0
+        difference = 0
         for feature, weight in numerical_features.items():
             input_feat = input_track[feature]
             comp_feat  = comp_track[feature]
 
-            distance   += ((input_feat - comp_feat)**p) * weight
+            difference += ((input_feat - comp_feat)**p) * weight
 
+        # Get the actual distance, rather than the weighted squared differences...
+        distance = difference**(1/p)
         return float(distance)
 
 
@@ -243,7 +245,7 @@ class DistPipeline:
         return expanded_df, expanded_fts
 
 
-    def run_pipeline(self):
+    def run_pipeline(self, top_n : int = 21):
         """TODO"""
 
         # First, make sure that our feature dictionaries are not None.
@@ -285,7 +287,7 @@ class DistPipeline:
         # Log top similar tracks.
         output = dict(sorted(result_dict.items(), key=lambda item: item[1]))
         for ix, items in enumerate(output.items()):
-            if ix >= 21:
+            if ix >= top_n:
                 break
             key, val = items
             logging.info("%d. %s - %f", ix, key, val)
@@ -312,6 +314,16 @@ if __name__ == '__main__':
     # Normalization Methods
     # ---------------------------------------------------------------------------------------------
     z_score_normalization = StandardScaler().fit_transform
+
+    # ---------------------------------------------------------------------------------------------
+    # HarmoF0 Pitch Features                                                                       |
+    # ---------------------------------------------------------------------------------------------
+    #   - Pitch Var is absolutely terrible. Not to be used at all.
+    #   - Pitch Salience (Not HarmoF0, Essentia)... most recommendations were bad.
+    #   - Pitch Mean and Pitch Hist were decent. Got to find the soft spot for their weights.
+    # ---------------------------------------------------------------------------------------------
+    harmof0_num_feats = {'pitch_var' : 1.0, 'pitch_mean' : 1.0}
+    harmof0_dim_feats = {'pitch_hist' : 1.0}
 
     # ---------------------------------------------------------------------------------------------
     # Effnet High Level / Subjective Features                                                      |
@@ -342,8 +354,8 @@ if __name__ == '__main__':
     #   could be used with relatively low weights, since sometimes the Top 1-3 results are decent,
     #   but overall these are not as good as others.
     #
-    #   - Addind the `avg_dissonance` makes it a bit better surprisingly. Still not good, but somewhat
-    #     more considerable.
+    #   - Addind the `avg_dissonance` makes it a bit better surprisingly. Still not good, but
+    #     somewhat more considerable.
     #   - The `tonal` effnet value could probably just be removed... since its mean
     #     is literally like 94... so it just marks everything as tonal ffsk.
     #   - Have to do more thorough testing of `bright_effnet` vs `bright_nsynth`
@@ -384,21 +396,33 @@ if __name__ == '__main__':
     handpicked_dim_features_2 = {'mfcc_mean' : 0.06, 'mfcc_std' : 0.15}     # Not adding tristimulus yet.
 
     # ---------------------------------------------------------------------------------------------
+    # Handpicked Features Set #3 - Now with Pitch Hist, Pitch Mean and Tristimulus.                |
+    # ---------------------------------------------------------------------------------------------
+    # ...
+    # ---------------------------------------------------------------------------------------------
+    handpicked_num_norm_3     = z_score_normalization
+    handpicked_num_features_3 = { 'electronic_effnet' : 1.0, 'instrumental_effnet' : 1.0, 'acoustic_effnet' : 0.8,
+                                  'female_effnet' : 1.0, 'bpm'     : 0.65, 'pitch_mean' : 1.00, }
+    handpicked_dim_features_3 = {'mfcc_mean'  : 0.06, 'mfcc_std'   : 0.15,
+                                #  'pitch_hist' : 1.00,'tristimulus' : 1.00
+                                }
+
+    # ---------------------------------------------------------------------------------------------
     # Running tests : Define your test parameters below for the Distance Pipeline                  |
     # ---------------------------------------------------------------------------------------------
-    logging.info("Current Settings:\n  \t-TEST MESSAGE\n\t-Euclidean for Both Distances\n \t-No Normalization\n")
+    logging.info("Current Settings:\n  \t-Handpicked Set No.2 - (With actual Euclidean Distance for Numerical...))\n\t-Euclidean for Both Distances\n \t-No Normalization\n")
 
-    track_dataset_path = ''
+    track_dataset_path = '/Users/nico/Desktop/CIIC/CAPSTONE/essentia_demo/datasets/seg_ds_full.csv'
     for testing_track_filename in testing_tracks:
 
         dist_pipeline = DistPipeline(input_filename      = testing_track_filename,
                                     track_dataset_path   = track_dataset_path,
                                     numerical_dist       = DistMethods.euclidean_numerical,
                                     dimensional_dist     = DistMethods.euclidean_dimensional,
-                                    numerical_features   = None,
-                                    dimensional_features = None,
+                                    numerical_features   = handpicked_num_features_2,
+                                    dimensional_features = handpicked_dim_features_2,
                                     normalize_numerical  = None
                                     )
-        dist_pipeline.run_pipeline()
+        dist_pipeline.run_pipeline(top_n=21)
 
     logging.info("-"*200)
