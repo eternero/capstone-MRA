@@ -5,14 +5,11 @@ stick to essentia it might be best to join this with classes/essentia_models.py
 
 from typing import TYPE_CHECKING, List, Any
 import gc
-import random
 import numpy as np
-from essentia.standard import MonoLoader
 from src.classes.essentia_algos import EssentiaAlgo
 from src.utils.parallel import load_essentia_model, torch_load
 from src.classes.essentia_containers import (EssentiaAlgorithmTask,
                                              EssentiaModelTask,
-                                             HarmoF0Task,
                                              FeatureTask
                                             )
 
@@ -60,9 +57,11 @@ class FeatureExtractor:
                                                essentia_embs.graph_filename,
                                                essentia_embs.output)
 
-        # Compute the embeddings
+        # Compute and save the embeddings
         track_embeddings = embeddings_tf(track_mono)
-        model_features   = {}  # Used to save our features!
+        model_features   = {}  # Used to save our features + embeddings!
+        emb_mean         = np.mean(track_embeddings, axis=0)
+        model_features[essentia_embs.embedding_name] = list(emb_mean)
 
         for essentia_inf_model in inference_models:
             inference_tf = load_essentia_model(essentia_inf_model.algorithm,

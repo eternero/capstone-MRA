@@ -56,9 +56,10 @@ class Track:
                       new_track_mono_44 : np.ndarray = None) -> "Track":
         """Creates a segmented copy of a track."""
 
-        # Set the segment_num
+        # Set the segment_num and segment_start
         new_metadata                  = self.metadata.copy()
         new_metadata['segment_num']   = seg_num
+        new_metadata['segment_start'] = seg_start
         inherited_features            = copy.deepcopy(self.features)
 
         track_segment = replace(self,
@@ -86,22 +87,18 @@ class Track:
             if track_length - sec < segment_size:
                 continue
 
-            # Define the bounds for the random number.
-            start_sec   = sec + segment_size                                # 190
-            end_sec     = min(sec + (60 - segment_size), track_length) + 1  # 185
-
             # Acquire the random number, and then acquire the segmented frame for each sample rate.
-            upper_bound = random.randint(start_sec, end_sec)
-            lower_bound = upper_bound - segment_size
+            lower_bound = sec
+            upper_bound = min(sec + 50,track_length - 10) # Make sure to stay in bounds in the track
+            start_sec   = random.randint(lower_bound, upper_bound)
 
             seg_num     = sec // 60
             seg_track   = self.segment_track(seg_num   = seg_num,
-                                             seg_start = lower_bound)
+                                             seg_start = start_sec)
 
             seg_track_list.append(seg_track)
 
         return seg_track_list
-
 
 
 class TrackPipeline:
@@ -249,7 +246,7 @@ class TrackPipeline:
 
         Additionally, the tracks will be 'tagged' with the first four columns, which will include
 
-                    FILENAME  |  ARTIST  |  TITLE  |  ALBUM
+                    FILENAME  ,   ARTIST  ,   TITLE  ,   ALBUM
 
         These are all attributes which can be acquired from `track.metadata` as specified in the
         column names (e.g. filename = track.get_metadata()['FILENAME']) and these MUST be the first
