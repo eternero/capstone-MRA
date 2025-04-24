@@ -11,9 +11,18 @@ from sklearn.preprocessing import StandardScaler
 logging.basicConfig(
     level=logging.INFO,
     format='%(message)s',
-    filename='distance_ind_re.log',
+    filename='distance_pooled_testing.log',
     filemode='a'
 )
+
+# Define columns to be used for Pooling... Essentially all `float` or `list[float]` features.
+NUM_COLS  = ['approachability_effnet', 'approachable_effnet', 'engagement_effnet', 'engaging_effnet',
+            'danceable_effnet', 'aggressive_effnet', 'happy_effnet', 'party_effnet', 'relaxed_effnet',
+            'sad_effnet', 'acoustic_effnet', 'electronic_effnet', 'instrumental_effnet', 'female_effnet',
+            'mfcc_avg_energy', 'mfcc_peak_energy', 'avg_dissonance', 'avg_rollof', 'bpm', 'avg_energy',
+            'tonal_effnet',	'bright_effnet', 'bright_nsynth_effnet', 'pitch_var', 'pitch_salience'
+            ]
+DIM_COLS  = ['tristimulus','mfcc_mean', 'mfcc_std', 'band_mean', 'band_std','pitch_hist']
 
 
 class DistMethods:
@@ -125,8 +134,8 @@ class DistMethods:
         for feature, weight in dimensional_features.items():
 
             # Have to use `ast.literal_eval()` since the dimensional features are saved as strings.
-            input_feat = np.array(ast.literal_eval(input_track[feature]))
-            comp_feat  = np.array(ast.literal_eval(comp_track[feature]))
+            input_feat = input_track[feature]
+            comp_feat  = comp_track[feature]
 
             dist_score += (np.linalg.norm(input_feat - comp_feat)) * weight
 
@@ -143,14 +152,59 @@ class DistMethods:
         for feature, weight in dimensional_features.items():
 
             # Unpack features
-            input_feature = np.array(ast.literal_eval(input_track[feature]))
-            comp_feature  = np.array(ast.literal_eval(comp_track[feature]))
+            input_feature = input_track[feature]
+            comp_feature  = comp_track[feature]
 
             cosine_dot    = np.dot(input_feature, comp_feature)
             cosine_norm   = (np.linalg.norm(input_feature)) * (np.linalg.norm(comp_feature))
             dist_score    += (cosine_dot / cosine_norm) * weight
 
         return float(dist_score)
+
+    @staticmethod
+    def pool_dataframe(track_df   : pd.DataFrame,
+                       num_feats  : list[str],
+                       dim_feats  : list[str],
+                      ):
+        """
+        Aggregates the features of the Track Dataframe by their mean values. Makes a distinction
+        between numerical features (`float`), dimensional features (`list[float]`) and other
+        features that could be metadata or that could simply not be pooled by mean.
+
+        Args:
+            track_df  : All of these
+            num_feats : are self
+            dim_feats : explanatory
+
+        Returns:
+            pooled_df : The aggregated dataframe by the mean of the features.
+        """
+
+        # Handle feats
+        num_feats = num_feats if num_feats is not None else []
+        dim_feats = dim_feats if dim_feats is not None else []
+
+        def mean_array(series : pd.Series):
+            """Helper function to get the mean of vector features for tracks in our dataframe."""
+            return np.stack(series.values, axis=0).mean(axis=0).tolist()
+
+
+        track_df_cols = track_df.columns.values
+        metadata_cols = [feat for feat in track_df_cols
+                        if feat not in num_feats and
+                           feat not in dim_feats and
+                           feat != 'filename'
+                        ]
+
+        # Build an aggregate dict with a function as the value to handle different types of feature.
+        agg_map = {}
+        agg_map.update({c: 'first' for c in metadata_cols})     # metadata  → stays the same across all
+        agg_map.update({c: 'mean' for c in num_feats})          # numerical → mean
+        agg_map.update({c: mean_array for c in dim_feats})      # vector    → np.mean() w/ helper
+
+        # Perform the pooling / grouping.
+        pooled = track_df.groupby('filename', as_index=True).agg(agg_map)
+        return pooled
 
 
 class DistPipeline:
@@ -159,7 +213,24 @@ class DistPipeline:
     Handles normalization of dataset and
 
     Args:
-        TODO
+        input_filename        : The string with the filename of the chosen input track.
+        track_dataset_path    : The path (str) to our .csv track dataset.
+
+        numerical_dist        : The method to be used for numerical (`float`) features.
+        dimensional_dist      : The method to be used for dimensional (`list[float]`) features.
+
+        numerical_features    : The dictionary containing the numerical features to be used and
+                                their weights. Defaults to None.
+        dimensional_features  : The dictionary containing the dimensional features to be used and
+                                their weights. Defaults to None.
+        expand_dimensional    : The boolean which determines whether the dimensional features will
+                                be expanded into numerical features. Defaults to false.
+
+        normalize_numerical   : The method to normalize the numerical features. Defaults to None.
+        normalize_dimensional : The method to normalize the dimensional features. Defaults to None.
+
+        pooling               : The boolean determining whether the segmented dataset will be
+                                pooled by the mean values of its features or not. Defaults to False.
     """
 
     def __init__(self,
@@ -169,9 +240,10 @@ class DistPipeline:
                  dimensional_dist      : Callable,
                  numerical_features    : dict[str, float] = None,
                  dimensional_features  : dict[str, float] = None,
-                 expand_dimensional    : bool     = False,
-                 normalize_numerical   : Callable = None,
-                 normalize_dimensional : Callable = None,
+                 expand_dimensional    : bool             = False,
+                 normalize_numerical   : Callable         = None,
+                 normalize_dimensional : Callable         = None,
+                 pooling               : bool             = False,
                 ):
 
         self.input_filename        = input_filename
@@ -182,7 +254,7 @@ class DistPipeline:
         self.dimensional_dist      = dimensional_dist
         self.normalize_numerical   = normalize_numerical
         self.normalize_dimensional = normalize_dimensional
-
+        self.pooling               = pooling
 
         # Load the dataset into a DataFrame. Copy it into another dataframe that is to be modified.
         self.original_track_df     = pd.read_csv(track_dataset_path)
@@ -206,19 +278,38 @@ class DistPipeline:
             self.dimensional_features = None
             self.numerical_features.update(expanded_fts)
 
+        # Take the features as lists so we can normalize and do whatever on them.
+        num_ft_list = (list(self.numerical_features.keys())
+                       if self.numerical_features else None)
+        dim_ft_list = (list(self.dimensional_features.keys())
+                       if self.dimensional_features else None)
 
         if self.normalize_numerical:
-            num_ft_list                    = list(self.numerical_features.keys())
             self.mod_track_df[num_ft_list] = normalize_numerical(self.mod_track_df[num_ft_list])
 
         if self.normalize_dimensional:
-            dim_ft_list                    = self.dimensional_features.keys()
             self.mod_track_df[dim_ft_list] = normalize_numerical(self.mod_track_df[dim_ft_list])
 
+        # Parse the dimensional features if there are any.
+        if dim_ft_list:
+            self.mod_track_df[dim_ft_list] = (self.mod_track_df[dim_ft_list]
+                                              .apply(ast.literal_eval)
+                                              .apply(np.array)
+                                             )
 
-        # Once we're done handling normalization, get our input track.
-        self.input_df : pd.DataFrame = self.mod_track_df.loc[self.input_filename]
+        if pooling is True:
+            # If everything is good, proceed.
+            self.mod_track_df = DistMethods.pool_dataframe(track_df  = self.mod_track_df,
+                                                           num_feats = num_ft_list,
+                                                           dim_feats = dim_ft_list)
 
+        # For flexibility, the Input Track will always be a DataFrame.
+        input_temp = self.mod_track_df.loc[self.input_filename]
+        if isinstance(input_temp, pd.Series):       # Here we handle the case in which it was turned
+            input_temp = input_temp.to_frame().T    # into a pd.Series due to the pooling.
+
+        # Do this for explicit type hinting.
+        self.input_df : pd.DataFrame = input_temp
 
     @staticmethod
     def expand_dimensional_feature(track_df : pd.DataFrame, feature_list : dict[str, float]):
@@ -246,7 +337,22 @@ class DistPipeline:
 
 
     def run_pipeline(self, top_n : int = 21):
-        """TODO"""
+        """
+        Acquires the `top_n` recommendations for our `input_df` (input track) based on the
+        attributes passed in to the `DistPipeline` object.
+
+        By iterating through each track in our dataframe and comparing it to the input track with
+        the given Distance Metrics and/or Normalization Methods we gather the resulting distance
+        for each track in the dataset and then sort by the closest ones to the input track.
+
+        The input track is handled as a dataframe given that the `self.track_df` is segmented
+        by default, meaning that a single track would be represented by multiple rows of segments,
+        thus a DataFrame.
+
+        If `DistPipeline` object is decided to be pooled by passing in `pooling = True` then those
+        segments become a single row (`pd.Series`) which we then covert to a `pd.DataFrame` of a
+        single row to keep the workflow simple.
+        """
 
         # First, make sure that our feature dictionaries are not None.
         self.numerical_features   = {} if not self.numerical_features \
@@ -287,6 +393,9 @@ class DistPipeline:
         # Log top similar tracks.
         output = dict(sorted(result_dict.items(), key=lambda item: item[1]))
         for ix, items in enumerate(output.items()):
+            if ix == 0:
+                continue
+
             if ix >= top_n:
                 break
             key, val = items
@@ -410,19 +519,55 @@ if __name__ == '__main__':
     # ---------------------------------------------------------------------------------------------
     # Running tests : Define your test parameters below for the Distance Pipeline                  |
     # ---------------------------------------------------------------------------------------------
-    logging.info("Current Settings:\n  \t-Handpicked Set No.2 - (With actual Euclidean Distance for Numerical...))\n\t-Euclidean for Both Distances\n \t-No Normalization\n")
+    sound_based_features = {'acoustic_effnet': 1.0, 'electronic_effnet': 1.0, 'instrumental_effnet': 1.0}
+
+
+
+    test_1  = ['electronic_effnet', 'instrumental_effnet']
+    test_2  = ['electronic_effnet', 'acoustic_effnet']
+    test_3  = ['instrumental_effnet', 'acoustic_effnet']
+
+    # With Additional Features (vocalist, bpm)
+    test_4  = ['electronic_effnet', 'bpm']
+    test_5  = ['instrumental_effnet', 'bpm']
+    test_6  = ['acoustic_effnet', 'bpm']
+
+    test_7  = ['electronic_effnet', 'female_effnet']
+    test_8  = ['instrumental_effnet', 'female_effnet']
+    test_9  = ['acoustic_effnet', 'female_effnet']
+    test_10 = ['female_effnet', 'bpm']
+
+    # Based Around Electronic and Instrumental
+    test_11 = ['electronic_effnet', 'instrumental_effnet', 'acoustic_effnet']
+    test_12 = ['electronic_effnet', 'instrumental_effnet', 'female_effnet']
+    test_13 = ['electronic_effnet', 'instrumental_effnet', 'bpm']
+
+    # Based Around Electronic and Acoustic
+    test_14 = ['electronic_effnet', 'acoustic_effnet', 'female_effnet']
+    test_15 = ['electronic_effnet', 'acoustic_effnet', 'bpm']
+    tests   = [
+                test_1, test_2, test_3, test_4, test_5, test_6, test_7, test_8, test_9, test_10,
+                test_11, test_12, test_13, test_14, test_15
+              ]
 
     track_dataset_path = '/Users/nico/Desktop/CIIC/CAPSTONE/essentia_demo/datasets/seg_ds_full.csv'
-    for testing_track_filename in testing_tracks:
 
-        dist_pipeline = DistPipeline(input_filename      = testing_track_filename,
-                                    track_dataset_path   = track_dataset_path,
-                                    numerical_dist       = DistMethods.euclidean_numerical,
-                                    dimensional_dist     = DistMethods.euclidean_dimensional,
-                                    numerical_features   = handpicked_num_features_2,
-                                    dimensional_features = handpicked_dim_features_2,
-                                    normalize_numerical  = None
-                                    )
-        dist_pipeline.run_pipeline(top_n=21)
+    for ix, test in enumerate(tests):
+        message    = " + ".join(test)
+        message    = f"Test {ix + 1} " + message
+        test_feats = {feat : 1.0 for feat in test}
+        logging.info("Current Settings:\n  \t-%s \n\t-Euclidean for Both Distances\n \t-Z-Score Normalization\n", message)
+        for testing_track_filename in testing_tracks:
 
-    logging.info("-"*200)
+            dist_pipeline = DistPipeline(input_filename      = testing_track_filename,
+                                        track_dataset_path   = track_dataset_path,
+                                        numerical_dist       = DistMethods.euclidean_numerical,
+                                        dimensional_dist     = DistMethods.euclidean_dimensional,
+                                        numerical_features   = test_feats,
+                                        dimensional_features = None,
+                                        normalize_numerical  = z_score_normalization,
+                                        pooling              = True,
+                                        )
+            dist_pipeline.run_pipeline(top_n=26)
+
+        logging.info("-"*200)
