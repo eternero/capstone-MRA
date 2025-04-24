@@ -180,13 +180,9 @@ class DistMethods:
             pooled_df : The aggregated dataframe by the mean of the features.
         """
 
-        # Handle feats
-        num_feats = num_feats if num_feats is not None else []
-        dim_feats = dim_feats if dim_feats is not None else []
-
         def mean_array(series : pd.Series):
             """Helper function to get the mean of vector features for tracks in our dataframe."""
-            return np.stack(series.values, axis=0).mean(axis=0).tolist()
+            return np.stack(series.values, axis=0).mean(axis=0)
 
 
         track_df_cols = track_df.columns.values
@@ -280,22 +276,23 @@ class DistPipeline:
 
         # Take the features as lists so we can normalize and do whatever on them.
         num_ft_list = (list(self.numerical_features.keys())
-                       if self.numerical_features else None)
+                       if self.numerical_features else [])
         dim_ft_list = (list(self.dimensional_features.keys())
-                       if self.dimensional_features else None)
+                       if self.dimensional_features else [])
 
-        if self.normalize_numerical:
+        if self.normalize_numerical and num_ft_list is True:
             self.mod_track_df[num_ft_list] = normalize_numerical(self.mod_track_df[num_ft_list])
 
-        if self.normalize_dimensional:
+        if self.normalize_dimensional and dim_ft_list is True:
             self.mod_track_df[dim_ft_list] = normalize_numerical(self.mod_track_df[dim_ft_list])
 
         # Parse the dimensional features if there are any.
         if dim_ft_list:
-            self.mod_track_df[dim_ft_list] = (self.mod_track_df[dim_ft_list]
-                                              .apply(ast.literal_eval)
-                                              .apply(np.array)
-                                             )
+            for dim_ft in dim_ft_list:
+                self.mod_track_df[dim_ft] = (self.mod_track_df[dim_ft]
+                                                .apply(ast.literal_eval)
+                                                .apply(np.array)
+                                                )
 
         if pooling is True:
             # If everything is good, proceed.
@@ -310,6 +307,7 @@ class DistPipeline:
 
         # Do this for explicit type hinting.
         self.input_df : pd.DataFrame = input_temp
+
 
     @staticmethod
     def expand_dimensional_feature(track_df : pd.DataFrame, feature_list : dict[str, float]):
@@ -550,24 +548,3 @@ if __name__ == '__main__':
                 test_11, test_12, test_13, test_14, test_15
               ]
 
-    track_dataset_path = '/Users/nico/Desktop/CIIC/CAPSTONE/essentia_demo/datasets/seg_ds_full.csv'
-
-    for ix, test in enumerate(tests):
-        message    = " + ".join(test)
-        message    = f"Test {ix + 1} " + message
-        test_feats = {feat : 1.0 for feat in test}
-        logging.info("Current Settings:\n  \t-%s \n\t-Euclidean for Both Distances\n \t-Z-Score Normalization\n", message)
-        for testing_track_filename in testing_tracks:
-
-            dist_pipeline = DistPipeline(input_filename      = testing_track_filename,
-                                        track_dataset_path   = track_dataset_path,
-                                        numerical_dist       = DistMethods.euclidean_numerical,
-                                        dimensional_dist     = DistMethods.euclidean_dimensional,
-                                        numerical_features   = test_feats,
-                                        dimensional_features = None,
-                                        normalize_numerical  = z_score_normalization,
-                                        pooling              = True,
-                                        )
-            dist_pipeline.run_pipeline(top_n=26)
-
-        logging.info("-"*200)
