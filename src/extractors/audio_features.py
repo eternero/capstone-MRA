@@ -6,12 +6,10 @@ stick to essentia it might be best to join this with classes/essentia_models.py
 from typing import TYPE_CHECKING, List, Any
 import gc
 import numpy as np
-from essentia.standard import MonoLoader
-from src.utils.parallel import load_essentia_model
 from src.classes.essentia_algos import EssentiaAlgo
+from src.utils.parallel import load_essentia_model, torch_load
 from src.classes.essentia_containers import (EssentiaAlgorithmTask,
                                              EssentiaModelTask,
-                                             HarmoF0Task,
                                              FeatureTask
                                             )
 
@@ -27,19 +25,7 @@ class FeatureExtractor:
     """
 
     @staticmethod
-    def handle_harmoF0(track_mono : np.ndarray,
-                       harmo_task : HarmoF0Task) -> dict[str, Any]:
-        """TODO : Add docstring"""
-
-        # Unpack task attributes
-        harmonic_f0 = harmo_task.algorithm
-        device      = harmo_task.device
-
-        # Return results!
-        return harmonic_f0(track_mono, device)
-
-    @staticmethod
-    def retrieve_algorithm_features(track_mono : np.ndarray, track_path : str,
+    def retrieve_algorithm_features(track               : "Track",
                                     essentia_algo_tasks : EssentiaAlgorithmTask) -> dict[str, Any]:
         """TODO : Add docstring"""
 
@@ -49,10 +35,10 @@ class FeatureExtractor:
 
             # Special Case, since loudness requires stereo audio and it loads it inside the method.
             if algorithm is EssentiaAlgo.get_loudness_ebu_r128:
-                algo_features.update(algorithm(track_path))
+                algo_features.update(algorithm(track.track_path))
 
             else:
-                algo_features.update(algorithm(track_mono))
+                algo_features.update(algorithm(track.track_mono_44))
 
         return algo_features
 
@@ -71,9 +57,11 @@ class FeatureExtractor:
                                                essentia_embs.graph_filename,
                                                essentia_embs.output)
 
-        # Compute the embeddings
+        # Compute and save the embeddings
         track_embeddings = embeddings_tf(track_mono)
-        model_features   = {}  # Used to save our features!
+        model_features   = {}  # Used to save our features + embeddings!
+        emb_mean         = np.mean(track_embeddings, axis=0)
+        model_features[essentia_embs.embedding_name] = list(emb_mean)
 
         for essentia_inf_model in inference_models:
             inference_tf = load_essentia_model(essentia_inf_model.algorithm,
@@ -93,42 +81,35 @@ class FeatureExtractor:
 
 
     @staticmethod
-    def retrieve_all_essentia_features(track_path         : str,
+    def retrieve_all_essentia_features(track              : "Track",
                                        essentia_task_list : List[FeatureTask]):
         """TODO : Add docstring"""
 
         # Placeholders.
-        track_mono_16 = MonoLoader(filename = track_path, sampleRate = 16000, resampleQuality = 0)()
-        track_mono_44 = MonoLoader(filename = track_path, sampleRate = 44100, resampleQuality = 0)()
-        curr_features = None
-        all_features  = {}
+        track_mono_44, track_mono_16 = torch_load(track_path = track.track_path,
+                                                  seg_start  = track.segment_start)
 
-        # Loop through the embedding -> model list in dictionary
+        track.track_mono_44 = track_mono_44
+        track.track_mono_16 = track_mono_16
+
+        # Loop through all the essentia tasks and handle them as necessary.
         for essentia_obj in essentia_task_list:
 
-            # Both Essentia Models and HarmoF0 use a Sample Rate of 16kHz
-            if isinstance(essentia_obj, (EssentiaModelTask, HarmoF0Task)):
+            # Check whether its an Essentia Model or Algorithm, since they're handled differently
+            if isinstance(essentia_obj, EssentiaModelTask):
+                curr_features = FeatureExtractor.retrieve_model_features(track.track_mono_16, essentia_obj)
 
-                # Check whether its an Essentia Model or HarmoF0, since they're handled differently
-                if isinstance(essentia_obj, EssentiaModelTask):
-                    curr_features = FeatureExtractor.retrieve_model_features(track_mono_16, essentia_obj)
-
-                # If it isn't an Essentia Model, then it must be HarmoF0.
-                else:
-                    curr_features = FeatureExtractor.handle_harmoF0(track_mono_16, essentia_obj)
-
-            # If it is neither of those, then it must be an Essentia Algoritm, which uses sr = 44kHz
+            # If it is not a model, then it must be an Essentia Algoritm, which uses sr = 44kHz
             else:
-                curr_features = FeatureExtractor.retrieve_algorithm_features(track_mono=track_mono_44,
-                                                                             track_path=track_path,
+                curr_features = FeatureExtractor.retrieve_algorithm_features(track             = track,
                                                                              essentia_algo_tasks=essentia_obj
                                                                             )
 
             # At the end of every iteration, which handles an Essentia Task, update our results!
-            all_features.update(curr_features)
+            track.features.update(curr_features)
 
 
-        del track_mono_44       # Clean up large audio arrays and hint for garbage collection
-        gc.collect()            # I kept track_mono_16 since it will be reused for Harmonic_F0.
+        del track.track_mono_44         # Clean up large audio arrays and hint for garbage collection
+        gc.collect()                    # I kept track_mono_16 since it will be reused for Harmonic_F0.
 
-        return all_features, track_mono_16
+        return track

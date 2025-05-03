@@ -3,6 +3,7 @@
 """
 import os
 import re
+import math
 from typing import Any, Dict, Optional
 from mutagen.id3 import ID3
 from mutagen.mp3 import MP3
@@ -132,8 +133,10 @@ class MetadataExtractor:
             "artist"       : MetadataExtractor._process_field(audio.get("artist") or audio.get("artists")),
             "title"        : MetadataExtractor._process_field(audio.get("title") or audio.get("song_name")),
             "album"        : MetadataExtractor._process_field(audio.get("album") or audio.get("album_name")),
+            "length"       : math.floor(audio.info.length),
             "album_artist" : MetadataExtractor._process_field(audio.get("album_artist") or audio.get("albumartist")),
             "release_year" : MetadataExtractor._process_field(audio.get("date") or audio.get("year"))
+
         }
 
         metadata['release_year'] = MetadataExtractor.extract_year(metadata['release_year'])

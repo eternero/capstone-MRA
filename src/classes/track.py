@@ -3,14 +3,16 @@
 """
 import os
 import time
+import copy
 import random
+import itertools
 from typing import Any, List, Dict, Callable
+from dataclasses import dataclass, field, replace
 
+import essentia
 import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
-import essentia
-from essentia.standard import MonoLoader
 from requests.exceptions import HTTPError, Timeout
 
 from src.utils.parallel import run_in_parallel
@@ -24,15 +26,12 @@ essentia.log.infoActive = False
 essentia.log.warningActive = False
 
 
+@dataclass
 class Track:
     """
     The Track object should encapsulate all of the necessary elements that we've determined to be
     pertinent to describing and analyzing a song. This includes metadata, features extracted using
-    essentia, and other information acquired from the SpotifyAPI (TODO).
-
-    This class implements the usage of others such as the MetadataExtractor, SpotifyAPI,
-    EssentiaModels and FeatureExtractor. The last two essentially work towards the same thing,
-    acquisition of features through essentia - and the first two are quite self-explanatory.
+    Essentia, and other information acquired from the SpotifyAPI.
 
     Attributes:
         track_path : The path which points to the location of the song file.
@@ -40,39 +39,66 @@ class Track:
 
         features   : The dictionary which stores the features that have been acquired for the track
         metadata   : The metadata of the track. Includes track name, album name, artist name etc...
-
-    TODO : Missing implementation of SpotifyAPI here, work on it.
     """
-    def __init__(self, track_path : str):
-        self.track_path    = track_path
-        self.track_mono_16 = None
-        self.track_mono_44 = None
+    track_path    : str
+    track_mono_16 : np.ndarray     = field(default_factory=list)
+    track_mono_44 : np.ndarray     = field(default_factory=list)
 
-        self.features      : Dict[str, Any] = {}
-        self.metadata      : Dict[str, Any] = {}
+    features      : Dict[str, Any] = field(default_factory=dict)
+    metadata      : Dict[str, Any] = field(default_factory=dict)
+    segment_start : int            = field(default_factory=int)
 
-    def update_features(self, new_features: Dict[str, Any]) -> None:
-        """_summary_
 
-        Args:
-            new_features (Dict[str, Any]): _description_
-        """
-        self.features.update(new_features)
+    def segment_track(self,
+                      seg_num           : int,
+                      seg_start         : int,
+                      new_track_mono_16 : np.ndarray = None,
+                      new_track_mono_44 : np.ndarray = None) -> "Track":
+        """Creates a segmented copy of a track."""
 
-    def update_metadata(self, new_metadata: Dict[str, Any]) -> None:
-        """_summary_
+        # Set the segment_num and segment_start
+        new_metadata                  = self.metadata.copy()
+        new_metadata['segment_num']   = seg_num
+        new_metadata['segment_start'] = seg_start
+        inherited_features            = copy.deepcopy(self.features)
 
-        Args:
-            new_metadata (Dict[str, Any]): _description_
-        """
-        self.metadata = new_metadata
+        track_segment = replace(self,
+                       metadata       = new_metadata,
+                       segment_start  = seg_start,
+                       features       = inherited_features,
+                       track_mono_16  = new_track_mono_16,
+                       track_mono_44  = new_track_mono_44,)
 
-    def get_track_mono(self, sample_rate : int) -> np.array:
-        """Wrapper for the MonoLoader method."""
-        return MonoLoader(filename        = self.track_path,
-                          sampleRate      = sample_rate,
-                          resampleQuality = 0)()
+        return track_segment
 
+
+    def create_segments(self) -> list["Track"]:
+        """Returns segmented track objects"""
+        if 'length' not in self.metadata:
+            raise KeyError('`length` attribute must be present in track metadata')
+
+        track_length   = self.metadata['length']
+        seg_track_list = []
+        segment_size   = 10
+
+        for sec in range(0, track_length, 60):
+
+            # Skip frames that might be too small. This should only occur for final-minute frames.
+            if track_length - sec < segment_size:
+                continue
+
+            # Acquire the random number, and then acquire the segmented frame for each sample rate.
+            lower_bound = sec
+            upper_bound = min(sec + 50,track_length - 10) # Make sure to stay in bounds in the track
+            start_sec   = random.randint(lower_bound, upper_bound)
+
+            seg_num     = sec // 60
+            seg_track   = self.segment_track(seg_num   = seg_num,
+                                             seg_start = start_sec)
+
+            seg_track_list.append(seg_track)
+
+        return seg_track_list
 
 
 class TrackPipeline:
@@ -99,7 +125,7 @@ class TrackPipeline:
         # Initialize a `Track` object.
         track    = Track(track_path=track_path)
         metadata = MetadataExtractor.extract(track.track_path)
-        track.update_metadata(metadata)
+        track.metadata.update(metadata)
 
         # Once we've got the metadata, we can proceed to get the Spotify API Features
         track_name       = track.metadata['title']
@@ -119,8 +145,8 @@ class TrackPipeline:
             try:
                 spotify_features = SpotifyAPI.get_spotify_features(track_artist,track_name,
                                                                    track_album,access_token)
-                track.update_features(spotify_features)
-                return track
+                track.features.update(spotify_features)
+                break
 
             # If we catch an error, we retry and delay our calls until we find success.
             except (HTTPError, Timeout, ConnectionError) as err:
@@ -136,6 +162,10 @@ class TrackPipeline:
                 delay = base_delay * (2 ** (retries - 1)) + random.uniform(0, 0.5)
                 print(f"Retrying in {delay:.2f} seconds...")
                 time.sleep(delay)
+
+
+        # Once we've got all of our Metadata and Spotify API Attributes, we can segment our track.
+        return track.create_segments()
 
 
     def run_pipeline(self, essentia_task_list : List[FeatureTask],
@@ -176,40 +206,34 @@ class TrackPipeline:
                              executor_type="thread"
                         )
 
-        self.track_list = [track for track in result_tracks if track is not None]
+        flat_track_list = list(itertools.chain(*result_tracks))
+        self.track_list = [track for track in flat_track_list if track is not None]
 
         # -----------------------------------------------------------------------------------------
         # Step 2 : Essentia Models Extraction
         # -----------------------------------------------------------------------------------------
         if not only_track:
-            track_paths  =  [track.track_path for track in self.track_list]
-            feat_results = run_in_parallel(FeatureExtractor.retrieve_all_essentia_features,
-                                        track_paths,
+            start = time.time()
+            result_tracks = run_in_parallel(FeatureExtractor.retrieve_all_essentia_features,
+                                        self.track_list,
                                         essentia_task_list,
                                         num_workers=10,
                                         executor_type="process",
                         )
 
-            for track, extracted_features in zip(self.track_list, feat_results):
-                if extracted_features is not None:
-                    track_features, track_mono_16 = extracted_features
-                    track.update_features(track_features)
-                    track.track_mono_16 = track_mono_16
-
-                else:   # There are no logs right now lol, will have to change that
-                    print(f"No features returned for track: {track.track_path}. Check worker logs.")
-
+            self.track_list = [track for track in result_tracks if track is not None]
+            print(f"Executed in {time.time() - start}")
 
         # -----------------------------------------------------------------------------------------
         # Step 3 : Handle any tasks that can't be parallelized. Must take `track_mono` as input.
         # -----------------------------------------------------------------------------------------
-        if additional_tasks is None:
+        if additional_tasks is None or only_track:
             additional_tasks = []
 
         for task in additional_tasks:
             for track in self.track_list:
                 task_features = task(track.track_mono_16)
-                track.update_features(task_features)
+                track.features.update(task_features)
 
         return self.track_list
 
@@ -222,7 +246,7 @@ class TrackPipeline:
 
         Additionally, the tracks will be 'tagged' with the first four columns, which will include
 
-                    FILENAME  |  ARTIST  |  TITLE  |  ALBUM
+                    FILENAME  ,   ARTIST  ,   TITLE  ,   ALBUM
 
         These are all attributes which can be acquired from `track.metadata` as specified in the
         column names (e.g. filename = track.get_metadata()['FILENAME']) and these MUST be the first
@@ -246,12 +270,4 @@ class TrackPipeline:
 
         # Create DataFrame from list of row dictionaries.
         df = pd.DataFrame(rows)
-
-        # # Determine all columns in the DataFrame.
-        # all_columns = list(df.columns)
-        # # Ensure required columns are first; maintain their order.
-        # remaining_columns = [col for col in all_columns if col not in required_columns]
-        # new_order = required_columns + remaining_columns
-        # df = df[new_order]
-
         return df
