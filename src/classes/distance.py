@@ -8,13 +8,6 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(message)s',
-    filename='distance_pooled_testing.log',
-    filemode='a'
-)
-
 # Define columns to be used for Pooling... Essentially all `float` or `list[float]` features.
 NUM_COLS  = ['approachability_effnet', 'approachable_effnet', 'engagement_effnet', 'engaging_effnet',
             'danceable_effnet', 'aggressive_effnet', 'happy_effnet', 'party_effnet', 'relaxed_effnet',
@@ -112,14 +105,21 @@ class DistMethods:
             cosine_similarity  : The cosine similarity for the feature vector between the two tracks.
         """
 
-        input_features = [input_track[feat] * weight for feat, weight in numerical_features.items()]
-        comp_features  = [comp_track[feat] * weight for feat, weight in numerical_features.items()]
+        # Get our stuff
+        feature_keys   = list(numerical_features.keys())
+        input_features = [input_track.get(feat, 0.0) for feat in feature_keys]
+        comp_features  = [comp_track.get(feat, 0.0)  for feat in feature_keys]
 
-        cosine_dot     = np.dot(input_features, comp_features)
-        cosine_norm    = (np.linalg.norm(input_features)) * (np.linalg.norm(comp_features))
-        cosine_sim     = cosine_dot / cosine_norm
+        #  Calculate Similarity
+        input_norm     = np.linalg.norm(input_features)
+        comp_norm      = np.linalg.norm(comp_features)
+        norm_product   = input_norm * comp_norm
 
-        return float(cosine_sim)
+        dot_product    = np.dot(input_features, comp_features)
+        similarity     = np.clip(dot_product / norm_product, -1.0, 1.0)
+
+        cosine_dist    = 1.0 - similarity
+        return float(cosine_dist)
 
     # ---------------------------------------------------------------------------------------------
     #  Define the dimensional distance methods now
@@ -152,12 +152,19 @@ class DistMethods:
         for feature, weight in dimensional_features.items():
 
             # Unpack features
-            input_feature = input_track[feature]
-            comp_feature  = comp_track[feature]
+            input_feature = input_track.get(feature)
+            comp_feature  = comp_track.get(feature)
 
+            input_norm    = np.linalg.norm(input_feature)
+            comp_norm     = np.linalg.norm(comp_feature)
+
+            cosine_norm   = input_norm * comp_norm
             cosine_dot    = np.dot(input_feature, comp_feature)
-            cosine_norm   = (np.linalg.norm(input_feature)) * (np.linalg.norm(comp_feature))
-            dist_score    += (cosine_dot / cosine_norm) * weight
+            similarity    = np.clip(cosine_dot / cosine_norm, -1.0, 1.0)
+
+            # Convert similarity to distance
+            feat_distance = 1.0 - similarity
+            dist_score    += abs(feat_distance * weight)
 
         return float(dist_score)
 
@@ -400,6 +407,9 @@ class DistPipeline:
             logging.info("%d. %s - %f", ix, key, val)
         logging.info("\n"*2)
 
+        # Currently we're printing, but the top tracks can be returned, or this can be
+        # altered so that
+
 
 if __name__ == '__main__':
     # ---------------------------------------------------------------------------------------------
@@ -447,7 +457,7 @@ if __name__ == '__main__':
     # ---------------------------------------------------------------------------------------------
     effnet_high_level_feats   = {'happy_effnet' : 1.0, 'danceable_effnet': 1.0,
                                  'aggressive_effnet': 1.0, 'relaxed_effnet': 1.0,
-                                 # 'party_effnet': 1.0, 'sad_effnet': 1.0,
+                                 'party_effnet': 1.0, 'sad_effnet': 1.0,
                                 }
 
     # ---------------------------------------------------------------------------------------------
@@ -497,30 +507,60 @@ if __name__ == '__main__':
     #       - It does not implement the Pitch Histogram or tristimulus either. Both could be
     #         implemented and would surely be of benefit.
     # ---------------------------------------------------------------------------------------------
-    handpicked_num_norm_2     = z_score_normalization
     handpicked_num_features_2 = { 'electronic_effnet' : 1.0, 'instrumental_effnet' : 1.0, 'acoustic_effnet' : 0.8,
                                   'female_effnet' : 1.0, 'bpm' : 0.65 }
     handpicked_dim_features_2 = {'mfcc_mean' : 0.06, 'mfcc_std' : 0.15}     # Not adding tristimulus yet.
 
     # ---------------------------------------------------------------------------------------------
-    # Handpicked Features Set #3 - Now with Pitch Hist, Pitch Mean and Tristimulus.                |
+    # Handpicked Features Set #3 - Now with Discogs Effnet Embeddings as well + Weight Changes     |
     # ---------------------------------------------------------------------------------------------
-    # ...
+    # The addition of the Discogs Effnet Embeddings are damn near miraculous, but they only work
+    # well with pooling. Pooling has made it so that other metrics like MFCC Mean and Std absolutely
+    # suck... but after all, they weren't damn near as good as the embeddings.
+    #
+    # These didn't add up all too well anyways, the numerical features need to be tweaked, so I'll
+    # just move on to the next round of testing.
     # ---------------------------------------------------------------------------------------------
-    handpicked_num_norm_3     = z_score_normalization
-    handpicked_num_features_3 = { 'electronic_effnet' : 1.0, 'instrumental_effnet' : 1.0, 'acoustic_effnet' : 0.8,
-                                  'female_effnet' : 1.0, 'bpm'     : 0.65, 'pitch_mean' : 1.00, }
-    handpicked_dim_features_3 = {'mfcc_mean'  : 0.06, 'mfcc_std'   : 0.15,
-                                #  'pitch_hist' : 1.00,'tristimulus' : 1.00
+    handpicked_num_features_3 = { 'electronic_effnet' : 1.2, 'instrumental_effnet' : 1.2, 'acoustic_effnet' : 0.8,
+                                  'female_effnet' : 0.5, 'bpm'     : 0.40}
+    handpicked_dim_features_3 = {'mfcc_mean'  : 0.04}
+
+    # ---------------------------------------------------------------------------------------------
+    # Handpicked Features Set #4 - MFCC Features Removed or Decreased Weights. Num Features upped  |
+    # ---------------------------------------------------------------------------------------------
+    # Satisfactory results, but some tweaks can be made. Not too sure how high the weight for the
+    # embeddings should be – sure, they do provide the best results, however smaller features also
+    # help level things out. Using optimization or triplet loss should help out figuring the values.
+    # ---------------------------------------------------------------------------------------------
+    handpicked_num_features_4 = {'electronic_effnet' : 5.0, 'instrumental_effnet' : 5.0, 'acoustic_effnet' : 3.0,
+                                 'female_effnet'     : 2.0, 'bpm'     : 1.0,
+
+                                 'happy_effnet'      : 3.0, 'danceable_effnet' : 3.0,
+                                 'aggressive_effnet' : 3.0, 'relaxed_effnet'   : 3.0,
+                                 'party_effnet'      : 3.0, 'sad_effnet'       : 3.0,
+
                                 }
+    handpicked_dim_features_4 = {'mfcc_mean'  : 0.05}
+
+    # ---------------------------------------------------------------------------------------------
+    # Handpicked Features Set #4 - MFCC Features Removed or Decreased Weights. Num Features upped  |
+    # ---------------------------------------------------------------------------------------------
+    # Satisfactory results, but some tweaks can be made. Not too sure how high the weight for the
+    # embeddings should be – sure, they do provide the best results, however smaller features also
+    # help level things out. Using optimization or triplet loss should help out figuring the values.
+    # ---------------------------------------------------------------------------------------------
+    handpicked_num_features_5 = {'electronic_effnet' : 5.0, 'instrumental_effnet' : 5.0,
+                                 'acoustic_effnet'   : 3.0, 'female_effnet'    : 2.0, 'bpm' : 1.0,
+
+                                 'happy_effnet'      : 3.0, 'danceable_effnet' : 3.0,
+                                 'aggressive_effnet' : 3.0, 'relaxed_effnet'   : 3.0,
+                                 'party_effnet'      : 3.0, 'sad_effnet'       : 3.0,
+                                 }
+    handpicked_dim_features_5 = {'mfcc_mean'  : 0.01, 'discogs_effnet_embeddings' : 5.0}
 
     # ---------------------------------------------------------------------------------------------
     # Running tests : Define your test parameters below for the Distance Pipeline                  |
     # ---------------------------------------------------------------------------------------------
-    sound_based_features = {'acoustic_effnet': 1.0, 'electronic_effnet': 1.0, 'instrumental_effnet': 1.0}
-
-
-
     test_1  = ['electronic_effnet', 'instrumental_effnet']
     test_2  = ['electronic_effnet', 'acoustic_effnet']
     test_3  = ['instrumental_effnet', 'acoustic_effnet']
@@ -547,4 +587,30 @@ if __name__ == '__main__':
                 test_1, test_2, test_3, test_4, test_5, test_6, test_7, test_8, test_9, test_10,
                 test_11, test_12, test_13, test_14, test_15
               ]
+
+    # Log test below.
+    track_dataset_path = ''
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(message)s',
+        filename='logs/handpicked_set_3.log',
+        filemode='a'
+    )
+
+    logging.info("Current Settings:\n\t-Handpicked Set No.5 (COSINE TEST #1 POOLING)\n  \t-Pooled\n \t-Z-Score Normalization\n")
+    for testing_track_filename in testing_tracks:
+        dist_pipeline = DistPipeline(input_filename      = testing_track_filename,
+                                    track_dataset_path   = track_dataset_path,
+                                    numerical_dist       = DistMethods.cosine_numerical,
+                                    dimensional_dist     = DistMethods.cosine_dimensional,
+                                    numerical_features   = handpicked_num_features_4,
+                                    dimensional_features = handpicked_dim_features_4,
+                                    normalize_numerical  = z_score_normalization,
+                                    pooling              = True,
+                                    )
+        dist_pipeline.run_pipeline(top_n=26)
+
+    logging.info("-"*200)
+
 
