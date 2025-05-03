@@ -4,6 +4,15 @@ import os
 from werkzeug.utils import secure_filename
 from flask import Flask, request, jsonify, render_template
 
+from src.classes.track import TrackPipeline
+from src.classes.essentia_containers import essentia_task_list
+
+
+
+
+# -------------------------------------------------------------------------------------------------
+#  Define Flask Environment / Config Variables
+# -------------------------------------------------------------------------------------------------
 UPLOAD_FOLDER = 'src/flaskr/uploads'
 ALLOWED_EXTENSIONS = {'mp3', 'flac'}
 
@@ -42,6 +51,11 @@ def recommend():
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
 
+
+    # 4. Process the Input Track with the `TrackPipeline`
+    track_pipeline = TrackPipeline(base_path = filepath)
+    track_pipeline.run_pipeline(essentia_task_list = essentia_task_list, additional_tasks   = None)
+    input_track_df = track_pipeline.get_track_dataframe()
 
     # 4. Run all the pipelines nd shit below...
     # > TrackPipeline       Here...

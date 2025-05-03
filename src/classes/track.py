@@ -197,9 +197,20 @@ class TrackPipeline:
         client_id     = os.environ.get('CLIENT_ID')
         client_secret = os.environ.get('CLIENT_SECRET')
         access_token  = request_access_token(client_id, client_secret)
-        filename_list = [os.path.join(self.base_path, filename)
-                         for filename in os.listdir(self.base_path)
-                         if filename.endswith(('.flac', '.mp3'))]
+
+
+        # Check if the base path is a directory or not, to take the appropriate action.
+        if os.path.isdir(self.base_path):
+            filename_list = [os.path.join(self.base_path, filename)
+                            for filename in os.listdir(self.base_path)
+                            if filename.endswith(('.flac', '.mp3'))]
+
+        else:
+            filename_list = [self.base_path] if self.base_path.endswith(('.flac', '.mp3')) else []
+
+        # If there are no tracks to be processed, then we must raise an error.
+        if not filename_list:
+            raise ValueError("Base Path must contain (or be) at least one .mp3 or .flac file")
 
         result_tracks = run_in_parallel(self._get_metadata_and_spotify,
                              filename_list, access_token,
