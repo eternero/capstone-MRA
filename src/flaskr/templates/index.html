@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Music Recommender</title>
+</head>
+
+<body>
+    <h1>Upload a track</h1>
+    <form id="upload-form">
+        <!-- accept only mp3/flac -->
+        <input type="file" id="audio-file" name="audio_file" accept=".mp3,.flac" required />
+        <button type="submit">Get Recommendations</button>
+    </form>
+
+    <h2>Recommendations</h2>
+    <ul id="results"></ul>
+
+    <script>
+        document.getElementById('upload-form').addEventListener('submit', async e => {
+            e.preventDefault();
+            const form = e.target;
+            const data = new FormData(form);                                // FormData lets you send files and fields together
+            const resp = await fetch('/recommend', { method: 'POST', body: data });
+            if (!resp.ok) {
+                alert('Upload failed');
+                return;
+            }
+
+            let index = 0;
+            const recs = await resp.json();                                 // Expect JSON list of recommendations
+            const list = document.getElementById('results');
+            list.innerHTML = '';
+
+            for (const r of recs) {
+                const li = document.createElement('li');
+                li.textContent = `${index}. ${r.track} — ${r.artist} (${r.album})`;
+                list.appendChild(li);
+                index++;
+            }
+        });
+    </script>
+</body>
+
+</html>
