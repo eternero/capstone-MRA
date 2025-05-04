@@ -6,13 +6,13 @@ from flask import Flask, request, jsonify, render_template
 
 from src.classes.track import TrackPipeline
 from src.classes.essentia_containers import essentia_task_list
-
-
-
+from src.classes.distance import (DistPipeline, DistMethods,
+                                  z_score_normalization, num_features, dim_features)
 
 # -------------------------------------------------------------------------------------------------
-#  Define Flask Environment / Config Variables
+#  Define Flask Environment / Config Variables / Constants
 # -------------------------------------------------------------------------------------------------
+DATASET_PATH  = 'datasets/seg_v2_full.csv'
 UPLOAD_FOLDER = 'src/flaskr/uploads'
 ALLOWED_EXTENSIONS = {'mp3', 'flac'}
 
@@ -47,7 +47,7 @@ def recommend():
         return jsonify({'error': 'Invalid file type'}), 400
 
     # 3. Secure and temporarily save to disk
-    filename = secure_filename(file.filename)                         # avoid path tricks [oai_citation:2‡Flask Documentation](https://flask.palletsprojects.com/en/stable/patterns/fileuploads/?utm_source=chatgpt.com)
+    filename = secure_filename(file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
 
@@ -57,32 +57,25 @@ def recommend():
     track_pipeline.run_pipeline(essentia_task_list = essentia_task_list, additional_tasks   = None)
     input_track_df = track_pipeline.get_track_dataframe()
 
-    # 4. Run all the pipelines nd shit below...
-    # > TrackPipeline       Here...
-    # > DistancePipeline    Here...
+    # 5. Get the top recommendations for the track...
+    dist_pipeline  = DistPipeline(input_track_df       = input_track_df,
+                                  track_dataset_path   = DATASET_PATH,
+                                  numerical_dist       = DistMethods.euclidean_numerical,
+                                  dimensional_dist     = DistMethods.cosine_dimensional,
+                                  numerical_features   = num_features,
+                                  dimensional_features = dim_features,
+                                  normalize_numerical  = z_score_normalization,
+                                  pooling              = True
+                                  )
 
-    # 5. Remove file once it has been used.
-    # os.remove(filepath)
+    # TODO : Make it so that this number can be altered by the user (up to 20)
+    top_recs       = dist_pipeline.run_pipeline(top_n = 10)
+
+    # 6. Remove file once it has been used.
+    os.remove(filepath)
 
     # 6) Send JSON back
-    # return jsonify(...)
+    return jsonify(top_recs)
 
 if __name__ == '__main__':
     app.run(debug=True)
-
-
-
-"""Code for Mocking Shit
-
-
-    #  MOCK RECOMMENDATION RETURN
-    recommendations = [
-      {'artist': 'burial',            'album': 'untrue',   'track': 'untrue'},
-      {'artist': 'bladee',            'album': 'gluee',    'track': 'unreal'},
-      {'artist': 'ecco2k',            'album': 'e',        'track': 'cc'},
-      {'artist': 'against all logic', 'album': '2012-2017','track': 'i never dream'},
-      {'artist': 'playboi carti',     'album': 'music',    'track': 'opm babi'},
-    ]
-
-    return jsonify(recommendations)
-"""
