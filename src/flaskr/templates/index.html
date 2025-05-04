@@ -1,41 +1,70 @@
 {% extends 'base.html' %}
-{% block title %}Home - Music Recommender{% endblock %}
-
+{% block title %}3M-RS – Multi-Modal Music Recommender{% endblock %}
 
 {% block content %}
-<h1>Upload a track</h1>
-<form id="upload-form">
-    <!-- accept only mp3/flac -->
-    <input type="file" id="audio-file" name="audio_file" accept=".mp3,.flac" required />
-    <button type="submit">Get Recommendations</button>
-</form>
+<!-- Hero section -->
+<div class="py-5 text-center">
+    <h1 class="display-4 fw-bold">3M-RS</h1>
+    <p class="lead text-muted">Multi-Modal Music Recommendation System</p>
+</div>
 
-<h2>Recommendations</h2>
-<ul id="results"></ul>
+<!-- Upload “button” -->
+<div class="row justify-content-center mt-1">
+    <div class="col-md-6">
+        <!-- hidden file input -->
+        <input type="file" id="audio-file" accept=".mp3,.flac" class="d-none">
+        <!-- styled label as the visible button/card -->
+        <label for="audio-file" class="d-block text-center p-4 bg-primary text-white rounded shadow-lg"
+            style="cursor: pointer;">
+            Upload an MP3 or FLAC to get recommendations
+        </label>
+    </div>
+</div>
+
+<!-- Results list -->
+<ul id="results" class="list-group mt-4 mb-5"></ul>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    document.getElementById('upload-form').addEventListener('submit', async e => {
-        e.preventDefault();
-        const form = e.target;
-        const data = new FormData(form);                                // FormData lets you send files and fields together
-        const resp = await fetch('/recommend', { method: 'POST', body: data });
-        if (!resp.ok) {
-            alert('Upload failed');
+    const fileInput = document.getElementById('audio-file');
+    const resultsList = document.getElementById('results');
+
+    fileInput.addEventListener('change', async e => {
+        const file = e.target.files[0];
+        if (!file) return;  // user cancelled
+
+        // 1) Validate extension client-side
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (!['mp3', 'flac'].includes(ext)) {
+            alert('Please select a valid MP3 or FLAC file.');
+            fileInput.value = '';
             return;
         }
 
-        let index = 0;
-        const recs = await resp.json();                                 // Expect JSON list of recommendations
-        const list = document.getElementById('results');
-        list.innerHTML = '';
+        // 2) Build FormData and POST
+        const formData = new FormData();
+        formData.append('audio_file', file);
 
-        for (const r of recs) {
-            const li = document.createElement('li');
-            li.textContent = `${index}. ${r.track_title} — ${r.track_artist} (${r.track_album})`;
-            list.appendChild(li);
-            index++;
+        try {
+            const resp = await fetch('/recommend', { method: 'POST', body: formData });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const recs = await resp.json();
+
+            // 3) Render results
+            resultsList.innerHTML = '';
+            recs.forEach((r, i) => {
+                const li = document.createElement('li');
+                li.className = 'list-group-item';
+                li.textContent = `${i + 1}. ${r.track_artist} — ${r.track_title} (${r.track_album})`;
+                resultsList.appendChild(li);
+            });
+        } catch (err) {
+            console.error(err);
+            alert('There was an error processing your file.');
+        } finally {
+            // optional: clear input so same file can be re-selected if needed
+            fileInput.value = '';
         }
     });
 </script>
