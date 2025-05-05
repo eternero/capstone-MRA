@@ -6,6 +6,7 @@ import time
 import copy
 import random
 import itertools
+from pprint import pprint
 from typing import Any, List, Dict, Callable
 from dataclasses import dataclass, field, replace
 
@@ -15,11 +16,11 @@ import pandas as pd
 from dotenv import load_dotenv
 from requests.exceptions import HTTPError, Timeout
 
-from src.utils.parallel import run_in_parallel
 from src.extractors.metadata import MetadataExtractor
-from src.classes.essentia_containers import FeatureTask
 from src.extractors.audio_features import FeatureExtractor
 from src.extractors.spotify_api import SpotifyAPI, request_access_token
+from src.utils.parallel import run_in_parallel, torch_load, load_essentia_model
+from src.classes.essentia_containers import FeatureTask, EssentiaModelTask, EssentiaAlgorithmTask
 
 # DISABLE LOGGING. ANNOYING!
 essentia.log.infoActive = False
@@ -115,7 +116,7 @@ class TrackPipeline:
         self.track_list: List[Track] = []
 
 
-    def _get_metadata_and_spotify(self, track_path : Track, access_token : str):
+    def _get_metadata_and_spotify(self, track_path : Track, access_token : str) -> list[Track]:
         """Acquires the metadata and Spotify API features for a single track.
 
         Args:
@@ -224,16 +225,20 @@ class TrackPipeline:
         # Step 2 : Essentia Models Extraction
         # -----------------------------------------------------------------------------------------
         if not only_track:
-            start = time.time()
-            result_tracks = run_in_parallel(FeatureExtractor.retrieve_all_essentia_features,
-                                        self.track_list,
-                                        essentia_task_list,
-                                        num_workers=10,
-                                        executor_type="process",
-                        )
 
-            self.track_list = [track for track in result_tracks if track is not None]
-            print(f"Executed in {time.time() - start}")
+            if len(filename_list) == 1:         # If we only have a single track... we're better
+                for track in self.track_list:   # off doing this than using PPE.
+                    track = FeatureExtractor.retrieve_all_essentia_features(track, essentia_task_list)
+
+            else:
+                result_tracks = run_in_parallel(FeatureExtractor.retrieve_all_essentia_features,
+                                            self.track_list,
+                                            essentia_task_list,
+                                            num_workers   = 10,
+                                            executor_type = "process",
+                            )
+
+                self.track_list = [track for track in result_tracks if track is not None]
 
         # -----------------------------------------------------------------------------------------
         # Step 3 : Handle any tasks that can't be parallelized. Must take `track_mono` as input.
@@ -247,6 +252,79 @@ class TrackPipeline:
                 track.features.update(task_features)
 
         return self.track_list
+
+
+
+    def run_pipeline_single(self, essentia_model_task_list : List[EssentiaModelTask],
+                                  essentia_algo_task_list  : List[EssentiaAlgorithmTask]):
+        """Runs the Track Pipeline for a Single Track."""
+        # -----------------------------------------------------------------------------------------
+        # Step 0 : Validate File Path
+        # -----------------------------------------------------------------------------------------
+        if os.path.isdir(self.base_path) or not self.base_path.endswith(('.flac', '.mp3')):
+            raise ValueError("Invalid File Path - Path must point to a single .flac or .mp3 file")
+
+        # -----------------------------------------------------------------------------------------
+        # Step 1 : Load Embeddings. Done here to avoid repetition in ProcessPool.
+        # -----------------------------------------------------------------------------------------
+        embedding_dict   = {}
+        embedding_models = [essentia_model_task.embedding_model
+                            for essentia_model_task in essentia_model_task_list]
+        for emb_model in embedding_models:
+            embedding_dict[emb_model.embedding_name] = load_essentia_model(emb_model.algorithm,
+                                                                           emb_model.graph_filename,
+                                                                           emb_model.output)
+
+        # -----------------------------------------------------------------------------------------
+        # Step 2 : Extract Metadata, Spotify API Data, Embeddings and also Segment the Track.
+        # -----------------------------------------------------------------------------------------
+        load_dotenv()
+        client_id      = os.environ.get('CLIENT_ID')
+        client_secret  = os.environ.get('CLIENT_SECRET')
+        access_token   = request_access_token(client_id, client_secret)
+
+        # Acquire the segments and load them.
+        track_segments =  self._get_metadata_and_spotify(track_path  = self.base_path,
+                                                        access_token = access_token)
+        for track in track_segments:
+            track_mono_44, track_mono_16 = torch_load(track_path = track.track_path,
+                                                      seg_start  = track.segment_start)
+            track.track_mono_44          = track_mono_44
+            track.track_mono_16          = track_mono_16
+
+            # Acquire the track embeddings
+            for emb_name, emb_model in embedding_dict.items():
+                # NOTE : This is initially saved as the full track embeddings, but once it is
+                # used by the inference models, it will then be changed to the embeddings mean,
+                # which is the audio representation that we use for distance metrics.
+                track.features[emb_name] = emb_model(track_mono_16)
+
+        # -----------------------------------------------------------------------------------------
+        # Step 3 : Essentia Models Extraction
+        # -----------------------------------------------------------------------------------------
+
+        # Gather all the tasks to be completed.
+        inference_model_tasks = [essentia_model_task.inference_models
+                                 for essentia_model_task in essentia_model_task_list]
+        algorithm_tasks       = [essentia_algo_task.algorithms
+                                 for essentia_algo_task in essentia_algo_task_list]
+
+        all_models            = list(itertools.chain.from_iterable(inference_model_tasks))
+        all_algos             = list(itertools.chain.from_iterable(algorithm_tasks))
+        essentia_task_list    = all_models + all_algos
+
+
+        print(len(essentia_task_list))
+        # This will return the same segments but w/ the updated features based on the tasks.
+        track_segments_feats  = run_in_parallel(FeatureExtractor.retrieve_all_essentia_features_single_track,
+                                                essentia_task_list,
+                                                track_segments,
+                                                num_workers   = 10,
+                                                executor_type = "process")
+
+
+        print(len(track_segments_feats))
+
 
 
     def get_track_dataframe(self) -> pd.DataFrame:
@@ -282,3 +360,5 @@ class TrackPipeline:
         # Create DataFrame from list of row dictionaries.
         df = pd.DataFrame(rows)
         return df
+
+

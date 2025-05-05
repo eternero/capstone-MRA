@@ -3,10 +3,11 @@ NOTE This code is still in development, trying out different features. Nonethele
 stick to essentia it might be best to join this with classes/essentia_models.py
 """
 
-from typing import TYPE_CHECKING, List, Any
+from typing import TYPE_CHECKING, List, Any, Callable
 import gc
 import numpy as np
 from src.classes.essentia_algos import EssentiaAlgo
+from src.classes.essentia_models import EssentiaModel
 from src.utils.parallel import load_essentia_model, torch_load
 from src.classes.essentia_containers import (EssentiaAlgorithmTask,
                                              EssentiaModelTask,
@@ -24,6 +25,9 @@ class FeatureExtractor:
     for the audio features that we will be extracting in this project.
     """
 
+    # ---------------------------------------------------------------------------------------------
+    # Track Batch Based Models
+    # ---------------------------------------------------------------------------------------------
     @staticmethod
     def retrieve_algorithm_features(track               : "Track",
                                     essentia_algo_tasks : EssentiaAlgorithmTask) -> dict[str, Any]:
@@ -113,3 +117,64 @@ class FeatureExtractor:
         gc.collect()                    # I kept track_mono_16 since it will be reused for Harmonic_F0.
 
         return track
+
+
+    # ---------------------------------------------------------------------------------------------
+    # Single Track Based Models
+    # ---------------------------------------------------------------------------------------------
+    @staticmethod
+    def retrieve_single_model_features(track : "Track", inference_model : EssentiaModel):
+        """Acquires the features of a Single Essentia Model for a Track (or Segment)"""
+        emb_model_name     = inference_model.embedding_name
+        track_embeddings   = track.features[emb_model_name]
+
+        inference_callable = load_essentia_model(inference_model.algorithm,
+                                                 inference_model.graph_filename,
+                                                 inference_model.output)
+        track_predictions  = inference_callable(track_embeddings)
+        feat_index         = inference_model.target_index
+        feature_name       = '_'.join([inference_model.classifiers[feat_index], inference_model.model_family])
+        track.features[feature_name] = np.mean(track_predictions, axis=0)[feat_index]
+
+        # NOTE : Once the embeddings are used, we only care about having them as a representation
+        # of the track, thus we acquire the mean of the embeddings.
+        track.features[emb_model_name] = list(np.mean(track.features[emb_model_name], axis=0))
+
+
+    @staticmethod
+    def retrieve_single_algo_features(track : "Track", algorithm : Callable):
+        """Acquires the features of a Single Essentia Algorithm for a Track (or Segment)"""
+        algorithm_features = algorithm(track.track_mono_44)
+        track.features.update(algorithm_features)
+
+
+    @staticmethod
+    def retrieve_all_essentia_features_single_track(essentia_task  : FeatureTask,
+                                                    track_segments : List["Track"]):
+        """
+        Acquires the features of a single `FeatureTask` for a single track divided in segments.
+
+        This method is a helper which allows us to run multiprocessing around models rather than
+        tracks. This is because it will be used in the `run_pipeline_single()` method - which runs
+        the `TrackPipeline` for a single file... making it useless to run multiprocessing for a
+        batch of tracks as was previously done in `run_pipeline_batch()`.
+
+        This method will return a list which contains the `FeatureTask` features for each segment
+        in a track - meaning that the length of this list will be the same as the num of segments.
+
+        When run in parallel, this should yield a 2D List of shape ( num_tasks x num_segmetns)
+        """
+        segment_features = []
+        for track in track_segments:
+
+            if isinstance(essentia_task, EssentiaModel):
+                FeatureExtractor.retrieve_single_model_features(track           = track,
+                                                                inference_model = essentia_task
+                                                            )
+            else:
+                FeatureExtractor.retrieve_single_algo_features(track     = track,
+                                                               algorithm = essentia_task
+                                                            )
+
+            segment_features.append(track.features)
+        return segment_features
