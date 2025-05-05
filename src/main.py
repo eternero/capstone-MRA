@@ -1,8 +1,10 @@
 """..."""
+import csv
 from src.classes.track import TrackPipeline
 from src.classes.essentia_algos import EssentiaAlgo
 import src.classes.essentia_models as essentia_models
 from src.classes.essentia_containers import EssentiaAlgorithmTask, EssentiaModelTask
+from src.backend.track_repository import TrackRepository
 
 if __name__ == '__main__':
     AUDIO_PATH = "src/audio/dataset_flac_2"
@@ -39,11 +41,17 @@ if __name__ == '__main__':
                                                                 EssentiaAlgo.get_loudness_ebu_r128
                                                                ])
 
-    additional_tasks                   = EssentiaAlgo.harmonic_f0
+    # additional_tasks                   = EssentiaAlgo.harmonic_f0
     essentia_task_list                 = [essentia_algorithms_task, essentia_discogs_effnet_task]
 
-    track_list = track_pipeline.run_pipeline(essentia_task_list = essentia_task_list,
-                                             additional_tasks   = additional_tasks)
+    # track_list = track_pipeline.run_pipeline(essentia_task_list = essentia_task_list,
+    #                                          additional_tasks   = additional_tasks)
+    track_list = track_pipeline.run_pipeline(essentia_task_list = essentia_task_list)
 
 
+    # Save the track list to a CSV file
+    track_dataframe = track_pipeline.get_track_dataframe()
+    csv_path = "src/audio/output_features.csv"
+    track_dataframe.to_csv(csv_path, index=False)
+    print(f"Track data saved to {csv_path}")
 

@@ -228,7 +228,7 @@ class TrackPipeline:
             result_tracks = run_in_parallel(FeatureExtractor.retrieve_all_essentia_features,
                                         self.track_list,
                                         essentia_task_list,
-                                        num_workers=10,
+                                        num_workers=4,
                                         executor_type="process",
                         )
 
