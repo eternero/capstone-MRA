@@ -8,7 +8,7 @@
     <p class="lead text-muted">Multi-Modal Music Recommendation System</p>
 </div>
 
-<!-- Upload “button” -->
+<!-- Upload section -->
 <div class="row justify-content-center mt-1">
     <div class="col-md-6">
         <!-- hidden file input -->
@@ -16,56 +16,144 @@
         <!-- styled label as the visible button/card -->
         <label for="audio-file" class="d-block text-center p-4 bg-primary text-white rounded shadow-lg"
             style="cursor: pointer;">
-            Upload an MP3 or FLAC to get recommendations
+            <i class="bi bi-upload me-2"></i>Upload an MP3 or FLAC to get recommendations
         </label>
+        <div class="text-center mt-2">
+            <small class="text-muted">Maximum file size: 40MB</small>
+        </div>
     </div>
 </div>
 
-<!-- Results list -->
-<ul id="results" class="list-group mt-4 mb-5"></ul>
+<!-- Loading spinner -->
+<div id="loading" class="text-center mt-4 d-none">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+    <p class="mt-2">Processing your file...</p>
+</div>
+
+<!-- Error message -->
+<div id="error" class="alert alert-danger mt-4 d-none" role="alert"></div>
+
+<!-- Results section -->
+<div id="results-section" class="mt-4 mb-5 d-none">
+    <h3 class="text-center mb-4">Recommended Tracks</h3>
+    <div class="list-group">
+        <!-- Results will be inserted here -->
+    </div>
+</div>
+
+<!-- Mock data button (for testing) -->
+<div class="text-center mt-4">
+    <button id="mock-data" class="btn btn-outline-secondary">Use Mock Data</button>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
     const fileInput = document.getElementById('audio-file');
-    const resultsList = document.getElementById('results');
+    const resultsSection = document.getElementById('results-section');
+    const loadingSpinner = document.getElementById('loading');
+    const errorAlert = document.getElementById('error');
+    const mockDataBtn = document.getElementById('mock-data');
+
+    // Mock data for testing
+    const mockRecommendations = [
+        { track_artist: "The Beatles", track_title: "Hey Jude", track_album: "Hey Jude" },
+        { track_artist: "Queen", track_title: "Bohemian Rhapsody", track_album: "A Night at the Opera" },
+        { track_artist: "Michael Jackson", track_title: "Billie Jean", track_album: "Thriller" },
+        { track_artist: "Led Zeppelin", track_title: "Stairway to Heaven", track_album: "Led Zeppelin IV" },
+        { track_artist: "Pink Floyd", track_title: "Comfortably Numb", track_album: "The Wall" }
+    ];
+
+    function showError(message) {
+        errorAlert.textContent = message;
+        errorAlert.classList.remove('d-none');
+        loadingSpinner.classList.add('d-none');
+    }
+
+    function hideError() {
+        errorAlert.classList.add('d-none');
+    }
+
+    function showLoading() {
+        loadingSpinner.classList.remove('d-none');
+        resultsSection.classList.add('d-none');
+        hideError();
+    }
+
+    function hideLoading() {
+        loadingSpinner.classList.add('d-none');
+    }
+
+    function renderRecommendations(recommendations) {
+        const resultsList = resultsSection.querySelector('.list-group');
+        resultsList.innerHTML = '';
+
+        recommendations.forEach((r, i) => {
+            const div = document.createElement('div');
+            div.className = 'list-group-item list-group-item-action';
+            div.innerHTML = `
+                <div class="d-flex w-100 justify-content-between">
+                    <h5 class="mb-1">${i + 1}. ${r.track_title}</h5>
+                    <small>${r.track_album}</small>
+                </div>
+                <p class="mb-1">${r.track_artist}</p>
+            `;
+            resultsList.appendChild(div);
+        });
+
+        resultsSection.classList.remove('d-none');
+    }
 
     fileInput.addEventListener('change', async e => {
         const file = e.target.files[0];
         if (!file) return;  // user cancelled
 
-        // 1) Validate extension client-side
-        const ext = file.name.split('.').pop().toLowerCase();
-        if (!['mp3', 'flac'].includes(ext)) {
-            alert('Please select a valid MP3 or FLAC file.');
+        // Validate file size (40MB)
+        if (file.size > 40 * 1024 * 1024) {
+            showError('File size exceeds 40MB limit.');
             fileInput.value = '';
             return;
         }
 
-        // 2) Build FormData and POST
+        // Validate extension
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (!['mp3', 'flac'].includes(ext)) {
+            showError('Please select a valid MP3 or FLAC file.');
+            fileInput.value = '';
+            return;
+        }
+
+        showLoading();
+
         const formData = new FormData();
         formData.append('audio_file', file);
 
         try {
             const resp = await fetch('/recommend', { method: 'POST', body: formData });
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            if (!resp.ok) {
+                const error = await resp.json();
+                throw new Error(error.error || `HTTP ${resp.status}`);
+            }
             const recs = await resp.json();
-
-            // 3) Render results
-            resultsList.innerHTML = '';
-            recs.forEach((r, i) => {
-                const li = document.createElement('li');
-                li.className = 'list-group-item';
-                li.textContent = `${i + 1}. ${r.track_artist} — ${r.track_title} (${r.track_album})`;
-                resultsList.appendChild(li);
-            });
+            renderRecommendations(recs);
         } catch (err) {
             console.error(err);
-            alert('There was an error processing your file.');
+            showError(err.message || 'There was an error processing your file.');
         } finally {
-            // optional: clear input so same file can be re-selected if needed
+            hideLoading();
             fileInput.value = '';
         }
+    });
+
+    // Mock data button handler
+    mockDataBtn.addEventListener('click', () => {
+        showLoading();
+        setTimeout(() => {
+            renderRecommendations(mockRecommendations);
+            hideLoading();
+        }, 1000); // Simulate loading time
     });
 </script>
 {% endblock %}
