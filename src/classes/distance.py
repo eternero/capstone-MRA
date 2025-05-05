@@ -1,14 +1,13 @@
 """Everything that has to do with distance."""
 import ast
-import logging
 from copy import deepcopy
 from typing import Callable
 from dataclasses import dataclass, asdict
+from src.utils.parallel import run_in_parallel
 
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-
 
 # -------------------------------------------------------------------------------------------------
 #  Define as Global the final selected features...
@@ -221,8 +220,7 @@ class DistMethods:
         track_df_cols = track_df.columns.values
         metadata_cols = [feat for feat in track_df_cols
                         if feat not in num_feats and
-                           feat not in dim_feats and
-                           feat != 'filename'
+                           feat not in dim_feats
                         ]
 
         # Build an aggregate dict with a function as the value to handle different types of feature.
@@ -260,6 +258,9 @@ class DistPipeline:
 
         pooling               : The boolean determining whether the segmented dataset will be
                                 pooled by the mean values of its features or not. Defaults to False.
+
+        save_df               : Provides the option to save the modified dataframe. This is some
+                                micro-spaghetti-retrospective-code. Used to save pooled dataframe.
     """
 
     def __init__(self,
@@ -273,6 +274,7 @@ class DistPipeline:
                  normalize_numerical   : Callable         = None,
                  normalize_dimensional : Callable         = None,
                  pooling               : bool             = False,
+                 save_df               : bool             = False
                 ):
 
         self.input_track_df        = input_track_df
@@ -337,6 +339,13 @@ class DistPipeline:
                                                              num_feats = num_ft_list,
                                                              dim_feats = dim_ft_list)
 
+        if save_df is True:
+            # Unparse the dim features to save the df... Terrible code, god please kill me.
+            copy_df = deepcopy(self.mod_track_df)
+            for dim_ft in dim_ft_list:
+                copy_df[dim_ft] = copy_df[dim_ft].apply(np.ndarray.tolist)
+            copy_df.to_csv('pooled_dataset.csv', index=True)
+
 
     @staticmethod
     def expand_dimensional_feature(track_df : pd.DataFrame, feature_list : dict[str, float]):
@@ -363,7 +372,7 @@ class DistPipeline:
         return expanded_df, expanded_fts
 
 
-    def run_pipeline(self, top_n: int = 20) -> list[DistTrack]:
+    def run_pipeline(self, top_n: int = 20) -> list[dict]:
         """Compute the top_n nearest tracks to the input track."""
         result = []
 
@@ -390,7 +399,58 @@ class DistPipeline:
                 )
             )
 
+
         # NOTE : If we're given a track that is already in the dataset, then it will be it's own top
         # result. Not sure how to deal with that yet! Metadata checking could work.
         result.sort(key=lambda dt: dt.track_distance)
-        return [asdict(track) for track in result][:top_n + 1]
+        return [asdict(track) for track in result][:top_n]
+
+
+    def get_dist_helper(self, comp_track : pd.Series) -> DistTrack:
+        """
+        Helper method to acquire Distance Values for Tracks in Parallel.
+
+        NOTE : This method assumes that pooling will be used - since we will indeed be using it for
+        our final demo, however it won't work well if pooling isn't used given that there will be
+        duplicate `DistTrack` objects for the same track w/ different segments.
+
+        Some post-processing could be done in that case, but that is to say that this method
+        works at its best if pooling is used.
+        """
+
+        best_dist = float('inf')
+        for _, input_track in self.input_track_df.iterrows():
+
+            distance = 0.0
+            if self.numerical_features:
+                distance += self.numerical_dist(input_track, comp_track,
+                                                self.numerical_features)
+            if self.dimensional_features:
+                distance += self.dimensional_dist(input_track, comp_track,
+                                                  self.dimensional_features)
+
+            if distance < best_dist:
+                best_dist = distance
+
+        result_track = DistTrack(
+                    track_artist   = comp_track.artist,
+                    track_album    = comp_track.album,
+                    track_title    = comp_track.title,
+                    spotify_uri    = comp_track.uri,
+                    track_distance = best_dist,
+                )
+        return result_track
+
+
+    def run_pipeline_parallel(self, top_n: int = 20) -> list[dict]:
+        """Copmute the top_n nearest tracks for the input track with Multi Threading."""
+
+        comp_track_list = list([comp_track for _,comp_track in self.mod_track_df.iterrows()])
+        result_list     = run_in_parallel(func          = self.get_dist_helper,
+                                          item_list     = comp_track_list,
+                                          executor_type = "thread")
+
+
+        print(type(comp_track_list), type(comp_track_list[0]))
+        result_list.sort(key=lambda dt: dt.track_distance)
+        return [asdict(track) for track in result_list][:top_n]
