@@ -3,7 +3,9 @@ File which gathers methods to be used for parallelism.
 """
 import os
 from functools import lru_cache
-from typing import Any, Callable
+from dataclasses import replace
+from collections import defaultdict
+from typing import Any, Callable, List, TYPE_CHECKING
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 
 import torch
@@ -12,7 +14,8 @@ import numpy as np
 import essentia.standard as es
 from src.external.harmof0 import harmof0
 
-
+if TYPE_CHECKING:
+    from src.classes.track import Track
 
 def torch_load(track_path : str, seg_start : int) -> tuple[np.ndarray]:
     """Wrapper for `torchaudio.load()` which will load a track as a 44.1kHz and 16kHz Numpy Mono Array"""
@@ -98,3 +101,54 @@ def run_in_parallel(func         : Callable,
                 print(f"Error processing a track: {e}")
 
     return results
+
+
+def pool_segments(track_list: List["Track"]) -> List["Track"]:
+    """
+    Given a list of Track segments (where many Track objects share the same track_path),
+    return a new list of Track objects—one per unique path—with their features pooled
+    (mean) across all segments.
+    """
+    # 1) Group segments by original file path
+    groups: dict[str, List["Track"]] = defaultdict(list)
+    for seg in track_list:
+        groups[seg.track_path].append(seg)
+
+    pooled: List[Track] = []
+
+    # 2) For each group, average its features
+    for _, segs in groups.items():
+        # Take the first segment as a template for metadata, uri, etc.
+        template = segs[0]
+        # Determine which feature keys exist
+        feat_keys = template.features.keys()
+
+        new_feats: dict[str, Any] = {}
+
+        for key in feat_keys:
+
+            vals = [s.features[key] for s in segs]
+
+            # Vector feature (list or ndarray)?
+            if isinstance(vals[0], (list, tuple, np.ndarray)):
+                arr = np.stack([np.array(v) for v in vals], axis=0)
+                # mean across axis=0 → same shape as one segment
+                new_feats[key] = arr.mean(axis=0).tolist()
+            else:
+                # scalar numerical
+                new_feats[key] = float(np.mean(vals))
+
+        # 3) Build a new Track with pooled features (drop segment-specific metadata)
+        metadata = {**template.metadata}
+        # remove segment_num / segment_start if present
+        for seg_key in ("segment_num","segment_start"):
+            metadata.pop(seg_key, None)
+
+        pooled_track = replace(
+            template,
+            features=new_feats,
+            metadata=metadata,
+        )
+        pooled.append(pooled_track)
+
+    return pooled

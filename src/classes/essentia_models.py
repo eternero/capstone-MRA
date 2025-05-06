@@ -97,7 +97,8 @@ approachability_2c              = EssentiaModel(
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['not_approachable', 'approachable'],
     target_index   = 1,
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 approachability_3c              = EssentiaModel(
@@ -105,7 +106,8 @@ approachability_3c              = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['not_approachable', 'moderately_approachable', 'approachable'],
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 approachability_regression      = EssentiaModel(
@@ -113,7 +115,8 @@ approachability_regression      = EssentiaModel(
     output         = 'model/Identity',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['approachability'],
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 engagement_2c                    = EssentiaModel(
@@ -122,7 +125,8 @@ engagement_2c                    = EssentiaModel(
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['not_engaging', 'engaging'],
     target_index   = 1,
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 engagement_3c                   = EssentiaModel(
@@ -130,7 +134,8 @@ engagement_3c                   = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['not_engaging', 'moderately_engaging', 'engaging'],
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 engagement_regression           = EssentiaModel(
@@ -138,7 +143,8 @@ engagement_regression           = EssentiaModel(
     output         = 'model/Identity',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['engagement'],
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 # ------------------------------------------------------------------------------
@@ -149,7 +155,8 @@ danceability_effnet_model       = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['danceable', 'not_danceable'],
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 mood_aggressive_effnet_model    = EssentiaModel(
@@ -157,7 +164,8 @@ mood_aggressive_effnet_model    = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['aggressive', 'not_aggressive'],
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 mood_happy_effnet_model         = EssentiaModel(
@@ -165,7 +173,8 @@ mood_happy_effnet_model         = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['happy', 'non_happy'],
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 mood_party_effnet_model         = EssentiaModel(
@@ -174,7 +183,8 @@ mood_party_effnet_model         = EssentiaModel(
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['non_party', 'party'],    # Metadata has it like this flipped, idk.
     target_index   = 1,                         # `target_index` is a stupid fix for this.
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 mood_relaxed_effnet_model       = EssentiaModel(
@@ -183,7 +193,8 @@ mood_relaxed_effnet_model       = EssentiaModel(
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['non_relaxed', 'relaxed'],    # Also flipped man idk.
     target_index   = 1,
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 mood_sad_effnet_model           = EssentiaModel(
@@ -192,7 +203,8 @@ mood_sad_effnet_model           = EssentiaModel(
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['non_sad', 'sad'],
     target_index   = 1,
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 mood_acoustic_effnet_model      = EssentiaModel(    # NOTE : TAKES A MELSPECTOGRAM AS EMBEDDING INPUT. FUCK
@@ -200,7 +212,8 @@ mood_acoustic_effnet_model      = EssentiaModel(    # NOTE : TAKES A MELSPECTOGR
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['acoustic', 'non_acoustic'],
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 mood_electronic_effnet_model    = EssentiaModel(
@@ -208,7 +221,8 @@ mood_electronic_effnet_model    = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['electronic', 'non_electronic'],
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 voice_instrumental_effnet_model = EssentiaModel(
@@ -216,7 +230,8 @@ voice_instrumental_effnet_model = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['instrumental', 'voice'],
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 # NOTE : Could be a good idea to zero-weight this if the instrumental value is v high.
@@ -225,7 +240,8 @@ voice_gender_effnet_model       = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['female', 'male'],
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 
@@ -234,7 +250,8 @@ tonal_atonal_effnet_model       = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['tonal', 'atonal'],
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 timbre_effnet_model             = EssentiaModel(
@@ -242,7 +259,8 @@ timbre_effnet_model             = EssentiaModel(
     output         = 'model/Softmax',
     algorithm      = 'TensorflowPredict2D',
     classifiers    = ['bright', 'dark'],
-    model_family   = "effnet"
+    model_family   = "effnet",
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 nsynth_timbre_effnet_model      = EssentiaModel(
