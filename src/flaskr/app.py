@@ -13,7 +13,7 @@ from src.classes.distance import (DistPipeline, DistMethods,
 # -------------------------------------------------------------------------------------------------
 #  Define Flask Environment / Config Variables / Constants
 # -------------------------------------------------------------------------------------------------
-DATASET_PATH  = 'datasets/seg_v2_full.csv'
+DATASET_PATH  = 'datasets/pooled_dataset.csv'
 UPLOAD_FOLDER = 'src/flaskr/uploads'
 ALLOWED_EXTENSIONS = {'mp3', 'flac'}
 
@@ -58,7 +58,8 @@ def recommend():
 
     # 4. Process the Input Track with the `TrackPipeline`
     track_pipeline = TrackPipeline(base_path = filepath)
-    track_pipeline.run_pipeline(essentia_task_list = essentia_task_list, additional_tasks   = None)
+    track_pipeline.run_pipeline(essentia_task_list = essentia_task_list,
+                                additional_tasks   = None, pooling = True)
     input_track_df = track_pipeline.get_track_dataframe()
 
     # 5. Get the top recommendations for the track...
@@ -69,7 +70,7 @@ def recommend():
                                   numerical_features   = num_features,
                                   dimensional_features = dim_features,
                                   normalize_numerical  = z_score_normalization,
-                                  pooling              = True
+                                  pooling              = False
                                   )
 
 
