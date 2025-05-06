@@ -33,7 +33,6 @@ class TrackRepository:
         ''')
         
         # Create features table
-        # TODO: Verify if its better o use BLOB or TEXT for the embedding
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS features (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,8 +40,24 @@ class TrackRepository:
             clean_artist TEXT NOT NULL,
             clean_album TEXT NOT NULL,
             clean_track TEXT NOT NULL,
-            embedding BLOB,
-            audio_features TEXT,
+
+            -- Numeric features
+            electronic_effnet REAL,
+            instrumental_effnet REAL,
+            acoustic_effnet REAL,
+            female_effnet REAL,
+            bpm REAL,
+            happy_effnet REAL,
+            danceable_effnet REAL,
+            aggressive_effnet REAL,
+            relaxed_effnet REAL,
+            party_effnet REAL,
+            sad_effnet REAL,
+            
+            -- Dimensional features (will be stored as JSON since sqlite3 doesn't support arrays)
+            mfcc_mean TEXT,
+            discogs_effnet_embeddings TEXT,
+
             FOREIGN KEY (track_id) REFERENCES tracks (id),
             UNIQUE(track_id)
         )
@@ -93,42 +108,74 @@ class TrackRepository:
         conn.close()
         return track_id
     
-    def insert_features_table(self, track_id: int, clean_artist: str, clean_album: str, clean_track: str, 
-                              embedding: np.ndarray, audio_features: Dict[str, Any]) -> int:
+    def insert_features_table(self, track_id: int, clean_artist: str, clean_album: str, 
+                              clean_track: str, features: Dict[str, Any]) -> int:
         """Save audio features for a track."""
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        # Convert numpy array to bytes for storage
-        embedding_bytes = embedding.tobytes()
+        # Extract features
+        electronic_effnet   = features.get('electronic_effnet')
+        instrumental_effnet = features.get('instrumental_effnet')
+        acoustic_effnet     = features.get('acoustic_effnet')
+        female_effnet       = features.get('female_effnet')
+        bpm                 = features.get('bpm')
+        happy_effnet        = features.get('happy_effnet')
+        danceable_effnet    = features.get('danceable_effnet')
+        aggressive_effnet   = features.get('aggressive_effnet')
+        relaxed_effnet      = features.get('relaxed_effnet')
+        party_effnet        = features.get('party_effnet')
+        sad_effnet          = features.get('sad_effnet')
         
-        # Convert audio features dict to JSON string
-        audio_features_json = json.dumps(audio_features)
+        mfcc_mean_json = (json.dumps(np.asarray(features.get("mfcc_mean")).tolist())
+            if features.get("mfcc_mean") is not None
+            else None
+        )
+
+        discogs_embeddings_json = (json.dumps(np.asarray(features.get("discogs_effnet_embeddings")).tolist())
+            if features.get("discogs_effnet_embeddings") is not None
+            else None
+        )
         
-        # Check if features for this track already exist
+        # Check if features for this track already exist :)
         cursor.execute("SELECT id FROM features WHERE track_id = ?", (track_id,))
         result = cursor.fetchone()
         
         if result:
-            # Update existing features
             cursor.execute(
                 """
                 UPDATE features 
-                SET clean_artist = ?, clean_album = ?, clean_track = ?, embedding = ?, audio_features = ?
+                SET clean_artist = ?, clean_album = ?, clean_track = ?, 
+                electronic_effnet = ?, instrumental_effnet = ?, acoustic_effnet = ?,
+                female_effnet = ?, bpm = ?, happy_effnet = ?, danceable_effnet = ?,
+                aggressive_effnet = ?, relaxed_effnet = ?, party_effnet = ?, sad_effnet = ?,
+                mfcc_mean = ?, discogs_effnet_embeddings = ?
                 WHERE track_id = ?
                 """,
-                (clean_artist, clean_album, clean_track, embedding_bytes, audio_features_json, track_id)
+                (clean_artist, clean_album, clean_track, 
+                 electronic_effnet, instrumental_effnet, acoustic_effnet, 
+                 female_effnet, bpm, happy_effnet, danceable_effnet,
+                 aggressive_effnet, relaxed_effnet, party_effnet, sad_effnet,
+                 mfcc_mean_json, discogs_embeddings_json, 
+                 track_id)
             )
             feature_id = result[0]
         else:
-            # Insert new features
             cursor.execute(
                 """
                 INSERT INTO features 
-                (track_id, clean_artist, clean_album, clean_track, embedding, audio_features) 
-                VALUES (?, ?, ?, ?, ?, ?)
+                (track_id, clean_artist, clean_album, clean_track,
+                electronic_effnet, instrumental_effnet, acoustic_effnet,
+                female_effnet, bpm, happy_effnet, danceable_effnet,
+                aggressive_effnet, relaxed_effnet, party_effnet, sad_effnet,
+                mfcc_mean, discogs_effnet_embeddings) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (track_id, clean_artist, clean_album, clean_track, embedding_bytes, audio_features_json)
+                (track_id, clean_artist, clean_album, clean_track,
+                 electronic_effnet, instrumental_effnet, acoustic_effnet,
+                 female_effnet, bpm, happy_effnet, danceable_effnet,
+                 aggressive_effnet, relaxed_effnet, party_effnet, sad_effnet,
+                 mfcc_mean_json, discogs_embeddings_json)
             )
             feature_id = cursor.lastrowid
         
@@ -183,26 +230,48 @@ class TrackRepository:
         if not result:
             return None
         
-        # Convert bytes back to numpy array
-        embedding_bytes = result[5]
-        embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
-        
-        # Parse JSON string back to dict
-        audio_features = json.loads(result[6])
-        
-        return {
-            "id": result[0],
-            "track_id": result[1],
-            "clean_artist": result[2],
-            "clean_album": result[3],
-            "clean_track": result[4],
-            "embedding": embedding,
-            "audio_features": audio_features
+        feature_dict = {
+            "id"                 : result[0],
+            "track_id"           : result[1],
+            "clean_artist"       : result[2],
+            "clean_album"        : result[3],
+            "clean_track"        : result[4],
+            "electronic_effnet"  : result[5],
+            "instrumental_effnet": result[6],
+            "acoustic_effnet"    : result[7],
+            "female_effnet"      : result[8],
+            "bpm"                : result[9],
+            "happy_effnet"       : result[10],
+            "danceable_effnet"   : result[11],
+            "aggressive_effnet"  : result[12],
+            "relaxed_effnet"     : result[13],
+            "party_effnet"       : result[14],
+            "sad_effnet"         : result[15]
         }
+
+        # Parsing it from JSON back to list/arrays.
+        # Needed to be converted since sqlite3 only supports scalars
+        if result[16]:  # mfcc_mean
+            try:
+                feature_dict["mfcc_mean"] = np.array(json.loads(result[16]))
+            except:
+                feature_dict["mfcc_mean"] = None
+                
+        if result[17]:  # discogs_effnet_embeddings
+            try:
+                feature_dict["discogs_effnet_embeddings"] = np.array(json.loads(result[17]))
+            except:
+                feature_dict["discogs_effnet_embeddings"] = None
+        
+        return feature_dict
     
-    def save_track_with_features(self, clean_artist: str, clean_album: str, clean_track: str,
-                               embedding: np.ndarray, audio_features: Dict[str, Any],
-                               spotify_link: Optional[str] = None, popularity: Optional[int] = None) -> int:
+    def save_track_with_features(self, 
+                               clean_artist: str, 
+                               clean_album: str, 
+                               clean_track: str,
+                               features: Dict[str, Any],
+                               spotify_link: Optional[str] = None,
+                               popularity: Optional[int] = None) -> int:
         """
         To save a track and its features in the database, there are separated methods for 
         saving the track and the features. This method combines them for convenience.
@@ -216,14 +285,13 @@ class TrackRepository:
             popularity=popularity
         )
         
-        # Then save the features
+        # Then save the features using the track_id 
         self.insert_features_table(
             track_id=track_id,
             clean_artist=clean_artist,
             clean_album=clean_album,
             clean_track=clean_track,
-            embedding=embedding,
-            audio_features=audio_features
+            features=features
         )
         
         return track_id
