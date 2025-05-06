@@ -15,7 +15,6 @@ import src.classes.essentia_models as essentia_models
 # -------------------------------------------------------------------------------------------------
 # Define the Task Container Dataclasses
 # -------------------------------------------------------------------------------------------------
-
 @dataclass
 class EssentiaModelTask:
     """Container for Essentia model-based feature extraction."""
