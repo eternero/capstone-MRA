@@ -451,6 +451,5 @@ class DistPipeline:
                                           executor_type = "thread")
 
 
-        print(type(comp_track_list), type(comp_track_list[0]))
         result_list.sort(key=lambda dt: dt.track_distance)
         return [asdict(track) for track in result_list][:top_n]

@@ -1,6 +1,7 @@
 """TODO Add File Docstring"""
 
 import os
+import time
 from werkzeug.utils import secure_filename
 from flask import Flask, request, jsonify, render_template
 
@@ -21,16 +22,19 @@ app.config['UPLOAD_FOLDER']      = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 40 * 1000 * 1000     # 40MB Max File Upload Size
 
 
-# helper to ensure we only accept the right extensions
 def allowed_file(filename: str) -> bool:
+    """Basic method for file type validation."""
     return (
         '.' in filename and
         filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
     )
 
+
 @app.route('/')
 def index():
+    """Method to render our home page."""
     return render_template('index.html')
+
 
 @app.route('/recommend', methods=['POST'])
 def recommend():
@@ -60,7 +64,7 @@ def recommend():
     # 5. Get the top recommendations for the track...
     dist_pipeline  = DistPipeline(input_track_df       = input_track_df,
                                   track_dataset_path   = DATASET_PATH,
-                                  numerical_dist       = DistMethods.euclidean_numerical,
+                                  numerical_dist       = DistMethods.cosine_numerical,
                                   dimensional_dist     = DistMethods.cosine_dimensional,
                                   numerical_features   = num_features,
                                   dimensional_features = dim_features,
@@ -68,8 +72,10 @@ def recommend():
                                   pooling              = True
                                   )
 
-    # TODO : Make it so that this number can be altered by the user (up to 20)
-    top_recs       = dist_pipeline.run_pipeline(top_n = 10)
+
+    start = time.time()
+    top_recs       = dist_pipeline.run_pipeline_parallel(top_n = 10)
+    print(f"Executed in {time.time() - start}")
 
     # 6. Remove file once it has been used.
     os.remove(filepath)

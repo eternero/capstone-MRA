@@ -133,7 +133,6 @@ class TrackPipeline:
         track_album      = track.metadata['album']
         track_artist     = track.metadata['artist']
 
-        print(f"Current : {track_artist} : {track_name}")
 
         # Handle errors using a timeout with exponential backoff. Let us define our params first.
         retry_limit = 5     # max number of retries to attempt.
@@ -228,7 +227,7 @@ class TrackPipeline:
         if not only_track:
 
             if len(self.track_list) <= 5:        # If we only have a few segments... we're better
-                for track in self.track_list:    # off doing this than using PPE.
+                for track in self.track_list:    # off doing this than using multiprocessing.
                     track = FeatureExtractor.retrieve_all_essentia_features(track,
                                                                             essentia_task_list)
             else:
