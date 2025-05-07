@@ -87,7 +87,8 @@ class MetadataExtractor:
                                                        else metadata["artist"])
         del metadata["album_artist"]
 
-        # Now, create the two new clean fields for `artist` and `album`
+        # Now, create the three new clean fields for `title`, `artist` and `album`
+        metadata["clean_title"]  = process_name(metadata["title"])
         metadata["clean_artist"] = process_name(metadata["artist"])
         metadata["clean_album"]  = process_name(metadata["album"])
 
