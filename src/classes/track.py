@@ -21,6 +21,8 @@ from src.classes.essentia_containers import FeatureTask
 from src.extractors.audio_features import FeatureExtractor
 from src.extractors.spotify_api import SpotifyAPI, request_access_token
 
+from src.utils.execution_timer import timing_decorator
+
 # DISABLE LOGGING. ANNOYING!
 essentia.log.infoActive = False
 essentia.log.warningActive = False
@@ -166,7 +168,6 @@ class TrackPipeline:
 
         # Once we've got all of our Metadata and Spotify API Attributes, we can segment our track.
         return track.create_segments()
-
 
     def run_pipeline(self, essentia_task_list : List[FeatureTask],
                      additional_tasks         : list[Callable] = None,
