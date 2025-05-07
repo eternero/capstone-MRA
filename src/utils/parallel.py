@@ -5,8 +5,37 @@ import os
 from functools import lru_cache
 from typing import Any, Callable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+
+import torch
+import torchaudio
+import numpy as np
 import essentia.standard as es
 from src.external.harmof0 import harmof0
+
+
+
+def torch_load(track_path : str, seg_start : int) -> tuple[np.ndarray]:
+    """Wrapper for `torchaudio.load()` which will load a track as a 44.1kHz and 16kHz Numpy Mono Array"""
+
+    # We assume a sample rate of 44.1kHz and segment_size = 10s
+    seg_size               = 10
+    track_seg_tensor_44, _ = torchaudio.load(track_path,
+                                          frame_offset = seg_start * 44100,
+                                          num_frames   = seg_size  * 44100)
+
+    # Create a resampled track from 44.1kHz to 16kHz
+    resampler              = torchaudio.transforms.Resample(44100, 16000)
+    track_seg_tensor_16    = resampler(track_seg_tensor_44)
+
+
+    # Convert both to a mono (1-Dim) np.ndarray
+    torch_mono_44          = torch.mean(track_seg_tensor_44, dim=0, keepdim=True)
+    torch_mono_16          = torch.mean(track_seg_tensor_16, dim=0, keepdim=True)
+
+    np_mono_44             = torch_mono_44.squeeze().detach().numpy().astype(np.float32)
+    np_mono_16             = torch_mono_16.squeeze().detach().numpy().astype(np.float32)
+
+    return np_mono_44, np_mono_16
 
 
 @lru_cache(maxsize=32)

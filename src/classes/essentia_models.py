@@ -22,13 +22,14 @@ class EssentiaModel:
 
     def __init__(
         self,
-        graph_filename: str,
-        output        : str,
-        algorithm     : str,
-        target_index  : int             = 0,
-        model_family  : str             = None,
-        classifiers   : list[str]       = None,
-        embeddings    : 'EssentiaModel' = None,
+        graph_filename : str,
+        output         : str,
+        algorithm      : str,
+        target_index   : int             = 0,
+        model_family   : str             = None,
+        classifiers    : list[str]       = None,
+        embeddings     : 'EssentiaModel' = None,
+        embedding_name : str             = None
     ) -> None:
         """Initializes an EssentiaModel instance.
 
@@ -45,6 +46,7 @@ class EssentiaModel:
         self.model_family   = model_family
 
         self.embeddings     = embeddings
+        self.embedding_name = embedding_name
         self.classifiers    = classifiers
         self.target_index   = target_index
         self.model          = None
@@ -70,18 +72,20 @@ class EssentiaModel:
 # Discog Embeddings
 # ------------------------------------------------------------------------------
 discogs_effnet_emb = EssentiaModel(
-    graph_filename='src/embeddings/discogs-effnet-bs64-1.pb',
-    output='PartitionedCall:1',
-    algorithm='TensorflowPredictEffnetDiscogs',
+    graph_filename = 'src/embeddings/discogs-effnet-bs64-1.pb',
+    output         = 'PartitionedCall:1',
+    algorithm      = 'TensorflowPredictEffnetDiscogs',
+    embedding_name = 'discogs_effnet_embeddings'
 )
 
 # ------------------------------------------------------------------------------
 # MusiCNN Embeddings
 # ------------------------------------------------------------------------------
 msd_musicnn_emb = EssentiaModel(
-    graph_filename='src/embeddings/msd-musicnn-1.pb',
-    output='model/dense/BiasAdd',
-    algorithm='TensorflowPredictMusiCNN',
+    graph_filename ='src/embeddings/msd-musicnn-1.pb',
+    output         ='model/dense/BiasAdd',
+    algorithm      ='TensorflowPredictMusiCNN',
+    embedding_name = 'musicnn_embeddings'
 )
 
 # ------------------------------------------------------------------------------
