@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, List, Any
 
 import numpy as np
 from src.classes.essentia_algos import EssentiaAlgo
-from src.utils.parallel import load_essentia_model, torch_load
+from src.utils import load_essentia_model, torch_load
 from src.classes.essentia_containers import (EssentiaAlgorithmTask,
                                              EssentiaModelTask,
                                              FeatureTask

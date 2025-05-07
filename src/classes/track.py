@@ -19,8 +19,8 @@ import essentia
 from src.extractors.metadata import MetadataExtractor
 from src.extractors.audio_features import FeatureExtractor
 from src.extractors.spotify_api import SpotifyAPI, request_access_token
-from src.utils.parallel import run_in_parallel, torch_load, load_essentia_model, pool_segments
-from src.classes.essentia_containers import FeatureTask, EssentiaModelTask, EssentiaAlgorithmTask
+from src.utils import run_in_parallel, pool_segments
+from src.classes.essentia_containers import FeatureTask
 
 # DISABLE LOGGING. ANNOYING!
 essentia.log.infoActive = False
@@ -234,7 +234,7 @@ class TrackPipeline:
                 result_tracks = run_in_parallel(FeatureExtractor.retrieve_all_essentia_features,
                                             self.track_list,
                                             essentia_task_list,
-                                            num_workers   = 5,
+                                            num_workers   = 10,
                                             executor_type = "process",
                             )
 

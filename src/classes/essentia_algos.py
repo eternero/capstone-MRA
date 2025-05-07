@@ -11,7 +11,7 @@ that has to be provided is a `Track` and the method takes care of the rest.
 
 from collections import Counter
 import numpy as np
-from src.utils.parallel import load_essentia_algorithm
+from src.utils import load_essentia_algorithm
 from src.external.harmof0 import harmof0
 
 

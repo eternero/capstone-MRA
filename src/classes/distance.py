@@ -3,7 +3,7 @@ import ast
 from copy import deepcopy
 from typing import Callable
 from dataclasses import dataclass, asdict
-from src.utils.parallel import run_in_parallel
+from src.utils import run_in_parallel
 
 import numpy as np
 import pandas as pd

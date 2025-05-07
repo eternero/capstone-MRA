@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 from mutagen.id3 import ID3
 from mutagen.mp3 import MP3
 from mutagen.flac import FLAC
-from src.utils.clean_csv import process_name
+from src.utils import process_name
 
 
 class MetadataExtractor:

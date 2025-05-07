@@ -8,7 +8,7 @@ import logging
 import nodriver
 import pandas as pd
 from nodriver import Tab, Browser
-from src.utils.clean_csv import load_json, is_missing
+from src.utils import load_json, is_missing
 
 # Configuring the logging
 logging.basicConfig(
