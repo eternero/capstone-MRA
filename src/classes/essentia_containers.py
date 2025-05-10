@@ -10,11 +10,11 @@ from dataclasses import dataclass
 from typing import List, Callable, Union
 from src.classes.essentia_algos import EssentiaAlgo
 from src.classes.essentia_models import EssentiaModel
+import src.classes.essentia_models as essentia_models
 
 # -------------------------------------------------------------------------------------------------
 # Define the Task Container Dataclasses
 # -------------------------------------------------------------------------------------------------
-
 @dataclass
 class EssentiaModelTask:
     """Container for Essentia model-based feature extraction."""
@@ -34,3 +34,27 @@ class HarmoF0Task:
 
 # For type checking in whatever uses this!
 FeatureTask = Union[EssentiaModelTask, EssentiaAlgorithmTask, HarmoF0Task]
+
+# -------------------------------------------------------------------------------------------------
+# Define all the stuff will be used in the final stage of the project... constants.
+# -------------------------------------------------------------------------------------------------
+essentia_discogs_models = [
+    essentia_models.danceability_effnet_model,
+    essentia_models.mood_aggressive_effnet_model,
+    essentia_models.mood_happy_effnet_model,
+    essentia_models.mood_party_effnet_model,
+    essentia_models.mood_relaxed_effnet_model,
+    essentia_models.mood_sad_effnet_model,
+    essentia_models.mood_acoustic_effnet_model,
+    essentia_models.mood_electronic_effnet_model,
+    essentia_models.voice_instrumental_effnet_model,
+    essentia_models.voice_gender_effnet_model,
+]
+
+essentia_discogs_task    = EssentiaModelTask(embedding_model  = essentia_models.discogs_effnet_emb,
+                                             inference_models = essentia_discogs_models)
+essentia_algorithms_task = EssentiaAlgorithmTask(algorithms=[
+                                                    EssentiaAlgo.mfcc_renewed,
+                                                    EssentiaAlgo.get_bpm_re2013,
+                                                    ])
+essentia_task_list       = [essentia_discogs_task, essentia_algorithms_task]

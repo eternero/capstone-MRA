@@ -9,17 +9,18 @@ import itertools
 from typing import Any, List, Dict, Callable
 from dataclasses import dataclass, field, replace
 
-import essentia
 import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 from requests.exceptions import HTTPError, Timeout
 
-from src.utils.parallel import run_in_parallel
+
+import essentia
 from src.extractors.metadata import MetadataExtractor
-from src.classes.essentia_containers import FeatureTask
 from src.extractors.audio_features import FeatureExtractor
 from src.extractors.spotify_api import SpotifyAPI, request_access_token
+from src.utils import run_in_parallel, pool_segments
+from src.classes.essentia_containers import FeatureTask
 
 from src.utils.execution_timer import timing_decorator
 
@@ -117,7 +118,7 @@ class TrackPipeline:
         self.track_list: List[Track] = []
 
 
-    def _get_metadata_and_spotify(self, track_path : Track, access_token : str):
+    def _get_metadata_and_spotify(self, track_path : Track, access_token : str) -> list[Track]:
         """Acquires the metadata and Spotify API features for a single track.
 
         Args:
@@ -134,7 +135,6 @@ class TrackPipeline:
         track_album      = track.metadata['album']
         track_artist     = track.metadata['artist']
 
-        print(f"Current : {track_artist} : {track_name}")
 
         # Handle errors using a timeout with exponential backoff. Let us define our params first.
         retry_limit = 5     # max number of retries to attempt.
@@ -147,7 +147,7 @@ class TrackPipeline:
             try:
                 spotify_features = SpotifyAPI.get_spotify_features(track_artist,track_name,
                                                                    track_album,access_token)
-                track.features.update(spotify_features)
+                track.metadata.update(spotify_features)
                 break
 
             # If we catch an error, we retry and delay our calls until we find success.
@@ -171,7 +171,8 @@ class TrackPipeline:
 
     def run_pipeline(self, essentia_task_list : List[FeatureTask],
                      additional_tasks         : list[Callable] = None,
-                     only_track               : bool = False) -> List[Track]:
+                     only_track               : bool = False,
+                     pooling                  : bool = False) -> List[Track]:
         """
         Processes all tracks in the following order:
           1. Extract metadata and spotify api features
@@ -198,9 +199,20 @@ class TrackPipeline:
         client_id     = os.environ.get('CLIENT_ID')
         client_secret = os.environ.get('CLIENT_SECRET')
         access_token  = request_access_token(client_id, client_secret)
-        filename_list = [os.path.join(self.base_path, filename)
-                         for filename in os.listdir(self.base_path)
-                         if filename.endswith(('.flac', '.mp3'))]
+
+
+        # Check if the base path is a directory or not, to take the appropriate action.
+        if os.path.isdir(self.base_path):
+            filename_list = [os.path.join(self.base_path, filename)
+                            for filename in os.listdir(self.base_path)
+                            if filename.endswith(('.flac', '.mp3'))]
+
+        else:
+            filename_list = [self.base_path] if self.base_path.endswith(('.flac', '.mp3')) else []
+
+        # If there are no tracks to be processed, then we must raise an error.
+        if not filename_list:
+            raise ValueError("Base Path must contain (or be) at least one .mp3 or .flac file")
 
         result_tracks = run_in_parallel(self._get_metadata_and_spotify,
                              filename_list, access_token,
@@ -214,16 +226,20 @@ class TrackPipeline:
         # Step 2 : Essentia Models Extraction
         # -----------------------------------------------------------------------------------------
         if not only_track:
-            start = time.time()
-            result_tracks = run_in_parallel(FeatureExtractor.retrieve_all_essentia_features,
-                                        self.track_list,
-                                        essentia_task_list,
-                                        num_workers=10,
-                                        executor_type="process",
-                        )
 
-            self.track_list = [track for track in result_tracks if track is not None]
-            print(f"Executed in {time.time() - start}")
+            if len(self.track_list) <= 5:        # If we only have a few segments... we're better
+                for track in self.track_list:    # off doing this than using multiprocessing.
+                    track = FeatureExtractor.retrieve_all_essentia_features(track,
+                                                                            essentia_task_list)
+            else:
+                result_tracks = run_in_parallel(FeatureExtractor.retrieve_all_essentia_features,
+                                            self.track_list,
+                                            essentia_task_list,
+                                            num_workers   = 10,
+                                            executor_type = "process",
+                            )
+
+                self.track_list = [track for track in result_tracks if track is not None]
 
         # -----------------------------------------------------------------------------------------
         # Step 3 : Handle any tasks that can't be parallelized. Must take `track_mono` as input.
@@ -235,6 +251,13 @@ class TrackPipeline:
             for track in self.track_list:
                 task_features = task(track.track_mono_16)
                 track.features.update(task_features)
+
+
+        # -----------------------------------------------------------------------------------------
+        # Step 4 : Pool together the track segments
+        # -----------------------------------------------------------------------------------------
+        if pooling:
+            self.track_list = pool_segments(self.track_list)
 
         return self.track_list
 
@@ -272,3 +295,5 @@ class TrackPipeline:
         # Create DataFrame from list of row dictionaries.
         df = pd.DataFrame(rows)
         return df
+
+

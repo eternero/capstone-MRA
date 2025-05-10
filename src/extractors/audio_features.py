@@ -3,11 +3,12 @@ NOTE This code is still in development, trying out different features. Nonethele
 stick to essentia it might be best to join this with classes/essentia_models.py
 """
 
-from typing import TYPE_CHECKING, List, Any
 import gc
+from typing import TYPE_CHECKING, List, Any
+
 import numpy as np
 from src.classes.essentia_algos import EssentiaAlgo
-from src.utils.parallel import load_essentia_model, torch_load
+from src.utils import load_essentia_model, torch_load
 from src.classes.essentia_containers import (EssentiaAlgorithmTask,
                                              EssentiaModelTask,
                                              FeatureTask
@@ -23,6 +24,7 @@ class FeatureExtractor:
     This class is in charge of providing methods which facilitate the creation of a data pipeline
     for the audio features that we will be extracting in this project.
     """
+
 
     @staticmethod
     def retrieve_algorithm_features(track               : "Track",
@@ -110,6 +112,7 @@ class FeatureExtractor:
 
 
         del track.track_mono_44         # Clean up large audio arrays and hint for garbage collection
+        track.track_mono_44 = None
         gc.collect()                    # I kept track_mono_16 since it will be reused for Harmonic_F0.
 
         return track

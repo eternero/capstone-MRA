@@ -1,49 +1,18 @@
 """..."""
 from src.classes.track import TrackPipeline
-from src.classes.essentia_algos import EssentiaAlgo
-import src.classes.essentia_models as essentia_models
-from src.classes.essentia_containers import EssentiaAlgorithmTask, EssentiaModelTask
+from src.classes.essentia_containers import essentia_task_list
 
 if __name__ == '__main__':
-    AUDIO_PATH = "src/audio/dataset_flac_2"
-    track_pipeline = TrackPipeline(AUDIO_PATH)
+    AUDIO_PATH_LIST = ["src/audio/dataset_flac_1", "src/audio/dataset_flac_2",
+                       "src/audio/dataset_flac_3", "src/audio/dataset_flac_4",
+                       "src/audio/dataset_flac_5", "src/audio/dataset_flac_6"
+                      ]
 
-    # Create our Tasks before running it...
-    essentia_discogs_effnet_embeddings = essentia_models.discogs_effnet_emb
-    essentia_discogs_effnet_models     = [
-                                        essentia_models.danceability_effnet_model,
-                                        essentia_models.mood_aggressive_effnet_model,
-                                        essentia_models.mood_happy_effnet_model,
-                                        essentia_models.mood_party_effnet_model,
-                                        essentia_models.mood_relaxed_effnet_model,
-                                        essentia_models.mood_sad_effnet_model,
-                                        essentia_models.mood_acoustic_effnet_model,
-                                        essentia_models.mood_electronic_effnet_model,
-                                        essentia_models.voice_instrumental_effnet_model,
-                                        essentia_models.voice_gender_effnet_model,
-                                        essentia_models.tonal_atonal_effnet_model,
-                                        essentia_models.timbre_effnet_model,
-                                        essentia_models.nsynth_timbre_effnet_model,
-                                        essentia_models.approachability_2c,
-                                        essentia_models.approachability_regression,
-                                        essentia_models.engagement_2c,
-                                        essentia_models.engagement_regression
-                                        ]
-    essentia_discogs_effnet_task       = EssentiaModelTask(embedding_model =essentia_discogs_effnet_embeddings,
-                                                           inference_models=essentia_discogs_effnet_models)
+    for ix, audio_path in enumerate(AUDIO_PATH_LIST):
+        track_pipeline = TrackPipeline(audio_path)
+        track_list     = track_pipeline.run_pipeline(essentia_task_list = essentia_task_list,
+                                                     additional_tasks   = None,
+                                                     pooling            = True)
 
-    essentia_algorithms_task           = EssentiaAlgorithmTask(algorithms=[
-                                                                EssentiaAlgo.el_monstruo,
-                                                                EssentiaAlgo.get_bpm_re2013,
-                                                                EssentiaAlgo.get_energy,
-                                                                EssentiaAlgo.get_loudness_ebu_r128
-                                                               ])
-
-    additional_tasks                   = EssentiaAlgo.harmonic_f0
-    essentia_task_list                 = [essentia_algorithms_task, essentia_discogs_effnet_task]
-
-    track_list = track_pipeline.run_pipeline(essentia_task_list = essentia_task_list,
-                                             additional_tasks   = additional_tasks)
-
-
-
+        track_df   = track_pipeline.get_track_dataframe()
+        track_df.to_csv(f'dataset_flac_{ix}_pooled.csv', index=False)
