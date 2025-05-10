@@ -2,10 +2,12 @@
 import os
 import re
 import json
+import time
 import glob
 import shutil
 import subprocess
 import unicodedata
+from functools import wraps
 from functools import lru_cache
 from dataclasses import replace
 from collections import defaultdict
@@ -377,3 +379,24 @@ def create_playlist_with_tracks(client_id : str, client_secret : str,
         sp.playlist_add_items(playlist_id, uri_list[i:i + 100])
 
     print(f'Playlist "{playlist_name}" created successfully with {len(uri_list)} tracks.')
+
+
+# -------------------------------------------------------------------------------------------------
+#  Decorators
+# -------------------------------------------------------------------------------------------------
+
+def timing_decorator(func):
+    """
+    Simple decorator to measure and print the execution time of a method in seconds.
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time  = time.time()
+        result      = func(*args, **kwargs)
+        endt_time   = time.time()
+        elapse_time = endt_time - start_time
+
+        print(f"{func.__name__} took {elapse_time:4f} seconds to complete")
+
+        return result
+    return wrapper

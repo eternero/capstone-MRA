@@ -22,7 +22,6 @@ from src.extractors.spotify_api import SpotifyAPI, request_access_token
 from src.utils import run_in_parallel, pool_segments
 from src.classes.essentia_containers import FeatureTask
 
-from src.utils.execution_timer import timing_decorator
 
 # DISABLE LOGGING. ANNOYING!
 essentia.log.infoActive = False
