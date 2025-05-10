@@ -588,24 +588,40 @@ if __name__ == '__main__':
                 test_11, test_12, test_13, test_14, test_15
               ]
 
+    # ---------------------------------------------------------------------------------------------
+    # Running tests for Energy Bands                                                               |
+    # ---------------------------------------------------------------------------------------------
+    energy_bands_mean = {'energy_ratio_sub_bass_mean' : 1.0,  'energy_ratio_bass_mean' : 1.0,
+                         'energy_ratio_lower_midrange_mean' : 1.0, 'energy_ratio_midrange_mean' : 1.0,
+                         'energy_ratio_higher_midrange_mean' : 1.0, 'energy_ratio_presence_mean' : 1.0,
+                         'energy_ratio_brilliance_mean' : 1.0
+                        }
+
+    energy_bands_std  = {'energy_ratio_sub_bass_std' : 1.0, 'energy_ratio_bass_std' : 1.0,
+                         'energy_ratio_lower_midrange_std' : 1.0, 'energy_ratio_midrange_std' : 1.0,
+                         'energy_ratio_higher_midrange_std' : 1.0, 'energy_ratio_presence_std' : 1.0,
+                         'energy_ratio_brilliance_std' : 1.0
+                        }
+
+
     # Log test below.
-    track_dataset_path = ''
+    track_dataset_path = 'bands_all.csv'
 
     logging.basicConfig(
         level=logging.INFO,
         format='%(message)s',
-        filename='logs/handpicked_set_3.log',
+        filename='logs/band_tests.log',
         filemode='a'
     )
 
-    logging.info("Current Settings:\n\t-Handpicked Set No.5 (COSINE TEST #1 POOLING)\n  \t-Pooled\n \t-Z-Score Normalization\n")
+    logging.info("Current Settings:\n\t-Band Mean Only (Pooling Euclidean)\n  \t-Not Pooled\n \t-Z-Score Normalization\n")
     for testing_track_filename in testing_tracks:
         dist_pipeline = DistPipeline(input_filename      = testing_track_filename,
                                     track_dataset_path   = track_dataset_path,
-                                    numerical_dist       = DistMethods.cosine_numerical,
+                                    numerical_dist       = DistMethods.euclidean_numerical,
                                     dimensional_dist     = DistMethods.cosine_dimensional,
-                                    numerical_features   = handpicked_num_features_4,
-                                    dimensional_features = handpicked_dim_features_4,
+                                    numerical_features   = energy_bands_mean,
+                                    dimensional_features = None,
                                     normalize_numerical  = z_score_normalization,
                                     pooling              = True,
                                     )
