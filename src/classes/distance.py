@@ -3,7 +3,7 @@ import ast
 from copy import deepcopy
 from typing import Callable
 from dataclasses import dataclass, asdict
-from src.utils.parallel import run_in_parallel
+from src.utils import run_in_parallel
 
 import numpy as np
 import pandas as pd
@@ -449,7 +449,6 @@ class DistPipeline:
         result_list     = run_in_parallel(func          = self.get_dist_helper,
                                           item_list     = comp_track_list,
                                           executor_type = "thread")
-
 
         result_list.sort(key=lambda dt: dt.track_distance)
         return [asdict(track) for track in result_list][:top_n]
