@@ -213,11 +213,10 @@ def convert_m4a_to_flac(input_dir : str, output_dir : str):
 # Loaders and other utils for the Track Pipeline
 # -------------------------------------------------------------------------------------------------
 
-def torch_load(track_path : str, seg_start : int) -> tuple[np.ndarray]:
+def torch_load(track_path : str, seg_start : int, seg_size : int) -> tuple[np.ndarray]:
     """Wrapper for `torchaudio.load()` which will load a track as a 44.1kHz and 16kHz Numpy Mono Array"""
 
-    # We assume a sample rate of 44.1kHz and segment_size = 10s
-    seg_size               = 10
+    # We assume a sample rate of 44.1kHz.
     track_seg_tensor_44, _ = torchaudio.load(track_path,
                                           frame_offset = seg_start * 44100,
                                           num_frames   = seg_size  * 44100)

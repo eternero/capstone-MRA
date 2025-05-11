@@ -29,7 +29,10 @@ class FeatureExtractor:
     @staticmethod
     def retrieve_algorithm_features(track               : "Track",
                                     essentia_algo_tasks : EssentiaAlgorithmTask) -> dict[str, Any]:
-        """TODO : Add docstring"""
+        """
+        TODO : Add docstring
+        TODO : Update method - LoudnessEBUR can be dismissed as a special case.
+        """
 
         algo_features  = {}
         algo_task_list = essentia_algo_tasks.algorithms
@@ -87,9 +90,9 @@ class FeatureExtractor:
                                        essentia_task_list : List[FeatureTask]):
         """TODO : Add docstring"""
 
-        # Placeholders.
         track_mono_44, track_mono_16 = torch_load(track_path = track.track_path,
-                                                  seg_start  = track.segment_start)
+                                                  seg_start  = track.segment_start,
+                                                  seg_size   = track.segment_size)
 
         track.track_mono_44 = track_mono_44
         track.track_mono_16 = track_mono_16
@@ -103,8 +106,8 @@ class FeatureExtractor:
 
             # If it is not a model, then it must be an Essentia Algoritm, which uses sr = 44kHz
             else:
-                curr_features = FeatureExtractor.retrieve_algorithm_features(track             = track,
-                                                                             essentia_algo_tasks=essentia_obj
+                curr_features = FeatureExtractor.retrieve_algorithm_features(track               = track,
+                                                                             essentia_algo_tasks = essentia_obj
                                                                             )
 
             # At the end of every iteration, which handles an Essentia Task, update our results!

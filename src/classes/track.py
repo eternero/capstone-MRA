@@ -48,11 +48,14 @@ class Track:
 
     features      : Dict[str, Any] = field(default_factory=dict)
     metadata      : Dict[str, Any] = field(default_factory=dict)
+
     segment_start : int            = field(default_factory=int)
+    segment_size  : int            = field(default_factory=int)
 
 
     def segment_track(self,
                       seg_num           : int,
+                      seg_size          : int,
                       seg_start         : int,
                       new_track_mono_16 : np.ndarray = None,
                       new_track_mono_44 : np.ndarray = None) -> "Track":
@@ -61,12 +64,12 @@ class Track:
         # Set the segment_num and segment_start
         new_metadata                  = self.metadata.copy()
         new_metadata['segment_num']   = seg_num
-        new_metadata['segment_start'] = seg_start
         inherited_features            = copy.deepcopy(self.features)
 
         track_segment = replace(self,
                        metadata       = new_metadata,
                        segment_start  = seg_start,
+                       segment_size   = seg_size,
                        features       = inherited_features,
                        track_mono_16  = new_track_mono_16,
                        track_mono_44  = new_track_mono_44,)
@@ -74,15 +77,49 @@ class Track:
         return track_segment
 
 
-    def create_segments(self) -> list["Track"]:
-        """Returns segmented track objects"""
+    def create_segments(self, segment_size : int = 10, segment_position : int = 0) -> list["Track"]:
+        """
+        Returns a list of segmented track objects.
+
+        By iterating through each minute in a track, we gather segments of `segment_size` seconds.
+        These segments can be clipped in three different ways depending on the value of
+        `segment_posisition`. These three alternatives are:
+        - Randomly within then bounds of that minute.   (`segment_position ==  0`)
+        - At the start of the minute.                   (`segment_position == -1`)
+        - At the end of the minute.                     (`segment_position ==  1`)
+
+        Once these segments are clipped and acquired, they're returned as a list of segments from
+        a `Track` - which are still `Track` objects themselves.
+
+        Args:
+            segment_size     : The integer which determines the size in seconds of the segments.
+                               This must value must be within 0 to 50. Defaults to 10.
+            segment_position : The integer which determines how a segment will be acquired. This
+                               value must be one of `[-1, 0, 1]`. Read method descritpion for more
+                               details. Defaults to 0.
+
+        Returns:
+            seg_track_list   : The list of all the segments that were acquired.
+
+        Raises:
+            KeyError         : If the `length` attribute in a track is not available.
+            ValueError       : If `segment_size` or `segment_position` aren't in their valid bounds.
+        """
+
+        # Handle any errors.
         if 'length' not in self.metadata:
             raise KeyError('`length` attribute must be present in track metadata')
 
+        if segment_size < 0 or segment_size >= 60:
+            raise ValueError('`segment_size` must be an integer between [0,59].')
+
+        if segment_position not in (-1, 0, 1):
+            raise ValueError('`segment_position` must be one of -1 (start), 0 (random), or 1 (end).')
+
+
+        # Commemnce working towards creation of the Segment Track List
         track_length   = self.metadata['length']
         seg_track_list = []
-        segment_size   = 10
-
         for sec in range(0, track_length, 60):
 
             # Skip frames that might be too small. This should only occur for final-minute frames.
@@ -91,11 +128,23 @@ class Track:
 
             # Acquire the random number, and then acquire the segmented frame for each sample rate.
             lower_bound = sec
-            upper_bound = min(sec + 50,track_length - 10) # Make sure to stay in bounds in the track
-            start_sec   = random.randint(lower_bound, upper_bound)
+            upper_bound = min(sec + (60 - segment_size),        # Make sure to stay
+                              track_length - segment_size)      # in bounds in the track
 
-            seg_num     = sec // 60
+
+            # Handle the way in which we will clip the segment.
+            if segment_position == -1:
+                start_sec = lower_bound
+
+            elif segment_position == 0:
+                start_sec = random.randint(lower_bound, upper_bound)
+
+            else:
+                start_sec = upper_bound
+
+            seg_num     = sec // 60     # Simply used to identify which minute a segment belongs to.
             seg_track   = self.segment_track(seg_num   = seg_num,
+                                             seg_size  = segment_size,
                                              seg_start = start_sec)
 
             seg_track_list.append(seg_track)
@@ -115,6 +164,9 @@ class TrackPipeline:
         self.base_path               = base_path
         self.sample_rate             = sample_rate
         self.track_list: List[Track] = []
+
+        self.segment_size     : int  = 10
+        self.segment_position : int  = 0
 
 
     def _get_metadata_and_spotify(self, track_path : Track, access_token : str) -> list[Track]:
@@ -166,10 +218,14 @@ class TrackPipeline:
 
 
         # Once we've got all of our Metadata and Spotify API Attributes, we can segment our track.
-        return track.create_segments()
+        return track.create_segments(segment_size     = self.segment_size,
+                                     segment_position = self.segment_position)
+
 
     def run_pipeline(self, essentia_task_list : List[FeatureTask],
                      additional_tasks         : list[Callable] = None,
+                     segment_position         : int  = 0,
+                     segment_size             : int  = 10,
                      only_track               : bool = False,
                      pooling                  : bool = False) -> List[Track]:
         """
@@ -190,9 +246,14 @@ class TrackPipeline:
             only_track         : Determines whether only the Track Metadata will be extracted.
                                  Defaults to False. If True, no other tasks will run.
         """
+        # -----------------------------------------------------------------------------------------
+        # Step 0 : Assign segmenting values.
+        # -----------------------------------------------------------------------------------------
+        self.segment_size     = segment_size
+        self.segment_position = segment_position
 
         # -----------------------------------------------------------------------------------------
-        # Step 1 : Metadata Extraction and Spotify API Features Extraction (Parallel)
+        # Step 1 : Metadata Extraction and Spotify API Features Extraction using Multi Threading.
         # -----------------------------------------------------------------------------------------
         load_dotenv()
         client_id     = os.environ.get('CLIENT_ID')
@@ -222,12 +283,12 @@ class TrackPipeline:
         self.track_list = [track for track in flat_track_list if track is not None]
 
         # -----------------------------------------------------------------------------------------
-        # Step 2 : Essentia Models Extraction
+        # Step 2 : Essentia Models and Algorithms Extraction
         # -----------------------------------------------------------------------------------------
         if not only_track:
 
             if len(self.track_list) <= 5:        # If we only have a few segments... we're better
-                for track in self.track_list:    # off doing this than using multiprocessing.
+                for track in self.track_list:    # off doing this linear than using multiprocessing.
                     track = FeatureExtractor.retrieve_all_essentia_features(track,
                                                                             essentia_task_list)
             else:
@@ -251,11 +312,10 @@ class TrackPipeline:
                 task_features = task(track.track_mono_16)
                 track.features.update(task_features)
 
-
         # -----------------------------------------------------------------------------------------
         # Step 4 : Pool together the track segments
         # -----------------------------------------------------------------------------------------
-        if pooling:
+        if pooling is True:
             self.track_list = pool_segments(self.track_list)
 
         return self.track_list
@@ -294,5 +354,3 @@ class TrackPipeline:
         # Create DataFrame from list of row dictionaries.
         df = pd.DataFrame(rows)
         return df
-
-
