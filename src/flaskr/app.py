@@ -13,7 +13,7 @@ from src.classes.distance import (DistPipeline, DistMethods,
 # -------------------------------------------------------------------------------------------------
 #  Define Flask Environment / Config Variables / Constants
 # -------------------------------------------------------------------------------------------------
-DATASET_PATH  = 'datasets/pooled_dataset.csv'
+DATASET_PATH  = 'datasets/dataset_flac_10s_pooled_mod2.csv'
 UPLOAD_FOLDER = 'src/flaskr/uploads'
 ALLOWED_EXTENSIONS = {'mp3', 'flac'}
 
@@ -82,7 +82,10 @@ def recommend():
     os.remove(filepath)
 
     # 6) Send JSON back
-    return jsonify(top_recs)
+    return jsonify({
+        'filename'        : filename,
+        'recommendations' : top_recs
+    })
 
 if __name__ == '__main__':
     app.run(debug=True)
