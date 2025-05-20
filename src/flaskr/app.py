@@ -59,7 +59,10 @@ def recommend():
     # 4. Process the Input Track with the `TrackPipeline`
     track_pipeline = TrackPipeline(base_path = filepath)
     track_pipeline.run_pipeline(essentia_task_list = essentia_task_list,
-                                additional_tasks   = None, pooling = True)
+                                additional_tasks   = None,
+                                pooling            = True,
+                                segment_position   = 1,
+                                segment_size       = 10)
     input_track_df = track_pipeline.get_track_dataframe()
 
     # 5. Get the top recommendations for the track...
